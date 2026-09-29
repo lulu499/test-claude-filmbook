@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dune Filmbook Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Syncopate:wght@400;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a 16:9 projection stage rendered to one canvas (virtual 1920x1080, matching the source video), an operator console, then the frame-by-frame breakdown. Single dark look by design. */
+:root {
+  --void: #070707;        /* stage black, measured from the video background */
+  --panel: #111010;       /* console surface */
+  --rule: #272423;        /* hairlines */
+  --bone: #eee4d3;        /* card border cream, measured */
+  --dust: #958c82;        /* secondary text */
+  --tag: #ad4034;         /* tag red, measured (172,64,53) */
+  --font-display: "Syncopate", "Eurostile", "Arial Black", sans-serif;
+  --font-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--void); color: var(--bone); }
+body { margin: 0; font: 15px/1.55 var(--font-body); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 64px; display: grid; gap: 22px; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { font: 700 clamp(15px, 2.2vw, 20px)/1.2 var(--font-display); letter-spacing: .32em; text-transform: uppercase; margin: 0; text-wrap: balance; }
+.sub { color: var(--dust); font: 12px/1.4 var(--font-mono); letter-spacing: .06em; }
+
+.stage { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; background: var(--void); overflow: hidden; outline: 1px solid var(--rule); }
+.stage:fullscreen { outline: none; width: 100vw; height: 100vh; aspect-ratio: auto; display: grid; place-items: center; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.stage:fullscreen canvas { position: static; width: min(100vw, 177.78vh); height: auto; aspect-ratio: 16 / 9; }
+.hud { position: absolute; left: 12px; top: 10px; font: 11px/1.4 var(--font-mono); color: var(--dust); letter-spacing: .05em; pointer-events: none; background: rgba(7,7,7,.55); padding: 3px 6px; }
+.hud b { color: var(--bone); font-weight: 500; }
+.stage.clean .hud { display: none; }
+
+.console { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 860px) { .console { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--rule); padding: 16px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.label { font: 500 11px/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .14em; color: var(--dust); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, .btn { font: 500 13px/1 var(--font-body); color: var(--bone); background: transparent; border: 1px solid var(--rule); padding: 9px 12px; cursor: pointer; border-radius: 2px; }
+button:hover, .btn:hover { border-color: var(--dust); }
+button:focus-visible, .btn:focus-within, select:focus-visible, input:focus-visible { outline: 2px solid var(--bone); outline-offset: 2px; }
+button.primary { background: var(--bone); color: var(--void); border-color: var(--bone); }
+.chip { font: 500 12px/1 var(--font-mono); padding: 8px 10px; letter-spacing: .02em; }
+.chip[aria-pressed="true"] { border-color: var(--tag); color: var(--bone); background: rgba(173, 64, 52, .22); }
+.chip kbd { font: inherit; color: var(--dust); margin-right: 6px; }
+.chip.now { box-shadow: inset 0 -2px 0 var(--bone); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 18px; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field label { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.field output { font: 12px var(--font-mono); color: var(--dust); font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--tag); }
+select { font: 13px var(--font-body); color: var(--bone); background: var(--void); border: 1px solid var(--rule); padding: 8px; border-radius: 2px; width: 100%; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.check input { accent-color: var(--tag); }
+.btn input[type="file"] { display: none; }
+.status { font: 12px/1.45 var(--font-mono); color: var(--dust); min-height: 1.45em; }
+
+.notes { display: grid; gap: 16px; }
+.notes h2 { font: 700 13px/1.3 var(--font-display); letter-spacing: .28em; text-transform: uppercase; margin: 8px 0 0; }
+.lede { color: var(--dust); font-size: 14px; max-width: 78ch; margin: 0; }
+.specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.specs div { background: var(--panel); padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+.specs h3 { margin: 0; font: 500 12px/1.3 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--bone); }
+.specs p { margin: 0; color: var(--dust); font-size: 13.5px; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 13.5px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 500 11px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dust); background: var(--panel); }
+td:first-child { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--bone); }
+td:nth-child(2) { white-space: nowrap; }
+td { color: var(--dust); }
+.pill { display: inline-block; font: 500 11px/1 var(--font-mono); padding: 4px 6px; border: 1px solid var(--rule); color: var(--bone); }
+.pill.stack { border-color: #6d6a64; } .pill.push { border-color: #8a6a3c; } .pill.slam, .pill.power { border-color: var(--tag); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Filmbook Lab</h1>
+    <span class="sub">Rebuilt from “Dune | Filmbooks: House Harkonnen” · 1920×1080 · 23.976 fps</span>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="cv" aria-label="Filmbook stage with image cards"></canvas>
+    <div class="hud" id="hud"><b id="hudFx">Power-on</b> · <span id="hudInfo">—</span></div>
+  </div>
+
+  <section class="console">
+    <div class="card">
+      <div class="row">
+        <button class="primary" id="nextBtn" title="Right arrow">Next image</button>
+        <button id="playBtn" title="Space">Pause</button>
+        <button id="restartBtn">Restart</button>
+        <button id="fsBtn">Fullscreen</button>
+      </div>
+      <div class="field">
+        <span class="label">Transitions · random among selected, weighted like the video</span>
+        <div class="row" id="fxChips"></div>
+      </div>
+      <div class="field">
+        <span class="label">Layouts</span>
+        <div class="row" id="layoutChips"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="hold">Hold per image <output id="holdOut"></output></label><input type="range" id="hold" min="0.8" max="8" step="0.1" value="3.4"></div>
+        <div class="field"><label for="speed">Transition speed <output id="speedOut"></output></label><input type="range" id="speed" min="0.25" max="2" step="0.05" value="1"></div>
+        <div class="field"><label for="dots">Dot-matrix screen <output id="dotsOut"></output></label><input type="range" id="dots" min="0" max="1" step="0.01" value="0.55"></div>
+        <div class="field"><label for="grain">Grain <output id="grainOut"></output></label><input type="range" id="grain" min="0" max="1" step="0.01" value="0.4"></div>
+        <div class="field"><label for="smoke">Background smoke <output id="smokeOut"></output></label><input type="range" id="smoke" min="0" max="1" step="0.01" value="0.6"></div>
+        <div class="field"><label for="flare">Lens flares <output id="flareOut"></output></label><input type="range" id="flare" min="0" max="1" step="0.01" value="0.8"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="grid2">
+        <div class="field"><label for="source">Image source</label>
+          <select id="source">
+            <option value="gen" selected>Generated Dune plates</option>
+            <option value="picsum">Random photos (picsum.photos)</option>
+            <option value="mine">My uploaded images</option>
+          </select>
+        </div>
+        <div class="field"><label for="grade">Colour treatment</label>
+          <select id="grade">
+            <option value="mixed" selected>Mixed, as in the video</option>
+            <option value="sepia">All sepia</option>
+            <option value="original">Original colour</option>
+          </select>
+        </div>
+        <div class="field"><label for="tags">Red tags</label>
+          <select id="tags">
+            <option value="glyph" selected>Glyph script</option>
+            <option value="off">Off</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <label class="btn" for="files">Add images…<input type="file" id="files" accept="image/*" multiple></label>
+        <label class="check"><input type="checkbox" id="hudOn" checked> Transition readout</label>
+      </div>
+      <div class="status" id="status">Drop images anywhere on the page to use your own.</div>
+    </div>
+  </section>
+
+  <section class="notes">
+    <h2>What the video does</h2>
+    <p class="lede">Measured frame by frame from the 1080p file. Everything happens on one black stage. Images sit in cream-bordered cards that are wider than they are tall, and a dot-matrix screen texture covers the whole picture. Pixel values below are at 1920×1080. Frame counts are at 23.976 fps.</p>
+    <div class="specs">
+      <div><h3>Stage</h3><p>Near-black (RGB 7,7,7 in corners) with slow grey smoke in the lower third and along the right edge. Two small star flares sit on the edges, one top at x≈575 and one bottom-right at x≈1765, bluish-white with a warm fringe.</p></div>
+      <div><h3>Card border</h3><p>A 1px dark outline, then about 3px of cream (≈238,228,211), then a 1–2px cool grey inner line before the image. This reads as chromatic fringing. A soft cream halo spreads about 15px outside and breaks into dots through the screen texture.</p></div>
+      <div><h3>Card sizes</h3><p>Mostly 2.39:1 “scope” cards, 1100–1540px wide and centred. Also 1.85:1 cards, pairs of tall portrait cards about 0.62:1, and single concept-art cards about 0.9:1.</p></div>
+      <div><h3>Ghost stack</h3><p>On a stack cut, the old card moves behind the new one, scaled to 0.957, shifted +71px right and −50px up. The front card is about 90% opaque, so the ghost’s edge shows through. The stack reaches three deep near the end.</p></div>
+      <div><h3>Red tags</h3><p>Flat red boxes (≈172,64,53) holding cream Chakobsa-style glyphs with a dark red drop shadow. One-line titles sit centred on the bottom edge. Paragraph tags hang off the bottom-right, top-left or right side.</p></div>
+      <div><h3>Motion while holding</h3><p>Cards never sit still. They drift a few pixels and slowly scale by about ±4% over a 3–6 second hold. Source clips also move inside the card. Stills here get a gentle push-in instead.</p></div>
+    </div>
+
+    <h2>Shot log</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Transition</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>0:00.0</td><td><span class="pill">Live action</span></td><td>Paul opens the filmbook device. Not part of the card system.</td></tr>
+          <tr><td>0:02.3</td><td><span class="pill">Empty stage</span></td><td>Smoke and flares only, for about 1.7 s.</td></tr>
+          <tr><td>0:03.9</td><td><span class="pill power">Power-on</span></td><td>The card flashes in at about 145% scale, then 135%, blanks for one frame (the tag stays), returns at 112% and eases to 100% over about 8 frames.</td></tr>
+          <tr><td>0:09.7</td><td><span class="pill stack">Stack cut</span></td><td>Hard cut. The new card lands in front and slides about 30px left over 6 frames. The old card becomes the ghost behind it.</td></tr>
+          <tr><td>0:13.5</td><td><span class="pill push">Push →</span></td><td>The whole stack slides right off the stage and two portrait cards follow with a gap. The left card blinks off on single frames while it settles.</td></tr>
+          <tr><td>0:17.8</td><td><span class="pill">Cut</span></td><td>Straight cut to a dark wide card.</td></tr>
+          <tr><td>0:19.8</td><td><span class="pill stack">Stack cut</span></td><td>New card in front, ghost behind.</td></tr>
+          <tr><td>0:21.4</td><td><span class="pill">Cut-out</span></td><td>A frameless illustration drifts in diagonally with two tags. This is the one shot without a card.</td></tr>
+          <tr><td>0:24.2</td><td><span class="pill push">Push ←</span></td><td>The new card enters from the right and decelerates into place.</td></tr>
+          <tr><td>0:29.6</td><td><span class="pill stack">Stack cut</span></td><td>A dark card over a light ghost.</td></tr>
+          <tr><td>0:32.8</td><td><span class="pill slam">Slam</span></td><td>The card appears full-bleed, bigger than the stage, then shrinks to its card size in about 10 frames with a tag at the bottom-left.</td></tr>
+          <tr><td>0:42.9</td><td><span class="pill push">Push ↑</span></td><td>The old card and its paragraph tag exit upward as the new card rises from below.</td></tr>
+          <tr><td>0:46.3</td><td><span class="pill">Settle</span></td><td>Cut to the new card at about 112%, easing down to 100% over about 6 frames.</td></tr>
+          <tr><td>0:52.6</td><td><span class="pill push">Push ↓</span></td><td>The new card drops in from the top.</td></tr>
+          <tr><td>0:58.0</td><td><span class="pill push">Push ←</span></td><td>A horizontal push with a visible gap between the cards.</td></tr>
+          <tr><td>1:04.8</td><td><span class="pill push">Push ↓</span></td><td>Vertical push.</td></tr>
+          <tr><td>1:07.2</td><td><span class="pill stack">Stack cut</span></td><td>A close-up lands over the wide crowd shot.</td></tr>
+          <tr><td>1:09.0</td><td><span class="pill push">Push ←</span></td><td>Horizontal push.</td></tr>
+          <tr><td>1:11.2</td><td><span class="pill push">Push ↑</span></td><td>Vertical push with a paragraph tag.</td></tr>
+          <tr><td>1:15.2</td><td><span class="pill stack">Stack cut</span></td><td>The tag hangs off the top-left corner.</td></tr>
+          <tr><td>1:18.5</td><td><span class="pill slam">Rapid cuts</span></td><td>Fire images hard-cut every 3–5 frames in the same card for about 1 s.</td></tr>
+          <tr><td>1:27.3</td><td><span class="pill">Cut</span></td><td>Cut to a concept-art portrait card.</td></tr>
+          <tr><td>1:34.0</td><td><span class="pill stack">Stack cut</span></td><td>Stack cut.</td></tr>
+          <tr><td>1:37.2</td><td><span class="pill stack">Stack cut</span></td><td>The stack becomes three deep with two ghosts.</td></tr>
+          <tr><td>1:39.5</td><td><span class="pill slam">Slam</span></td><td>Full-bleed fire image shrinks down into a card.</td></tr>
+          <tr><td>1:42.7</td><td><span class="pill">Blackout</span></td><td>The card vanishes and only smoke and flares remain, then the end card follows.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const VW = 1920, VH = 1080, FPS = 23.976;
+
+/* ------------------------------------------------------------------ */
+/* Catalogue                                                           */
+/* ------------------------------------------------------------------ */
+const FX = [
+  { id: 'stack',  name: 'Stack cut',   w: 7 },
+  { id: 'push',   name: 'Push',        w: 8 },
+  { id: 'settle', name: 'Scale settle', w: 2 },
+  { id: 'slam',   name: 'Slam',        w: 2 },
+  { id: 'power',  name: 'Power-on',    w: 1 },
+  { id: 'rapid',  name: 'Rapid cuts',  w: 1 },
+  { id: 'black',  name: 'Blackout',    w: 1 },
+];
+const LAYOUTS = [
+  { id: 'wide', name: 'Scope 2.39', w: 7 },
+  { id: 'flat', name: 'Flat 1.85', w: 2 },
+  { id: 'pair', name: 'Portrait pair', w: 1.5 },
+  { id: 'art',  name: 'Concept card', w: 1 },
+];
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[(Math.random() * a.length) | 0];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+const easeOutQuart = t => 1 - Math.pow(1 - t, 4);
+const easeInOutCubic = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+function weighted(list) { const tot = list.reduce((s, x) => s + x.w, 0); let r = Math.random() * tot; for (const x of list) { if ((r -= x.w) <= 0) return x; } return list[list.length - 1]; }
+function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
+function rng(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+
+/* ------------------------------------------------------------------ */
+/* Generated plates (work offline and inside sandboxed viewers)        */
+/* ------------------------------------------------------------------ */
+function grad(ctx, y0, y1, stops) { const g = ctx.createLinearGradient(0, y0, 0, y1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; }
+function speckle(ctx, r, W, H, n, a) { for (let i = 0; i < n; i++) { ctx.fillStyle = `rgba(255,240,220,${r() * a})`; ctx.fillRect(r() * W, r() * H, 1.5, 1.5); } }
+function ridge(ctx, r, W, H, base, amp, top, bot, hl) {
+  const f1 = (.004 + r() * .006) * 900 / W, f2 = (.013 + r() * .01) * 900 / W, p1 = r() * 9, p2 = r() * 9;
+  const Y = x => base + Math.sin(x * f1 + p1) * amp + Math.sin(x * f2 + p2) * amp * .35 - Math.abs(Math.sin(x * f1 * .5 + p2)) * amp * .6;
+  ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 6) ctx.lineTo(x, Y(x)); ctx.lineTo(W, H); ctx.closePath();
+  ctx.fillStyle = grad(ctx, base - amp, H, [[0, top], [1, bot]]); ctx.fill();
+  if (hl) { ctx.strokeStyle = hl; ctx.lineWidth = 2; ctx.beginPath(); for (let x = 0; x <= W; x += 6) ctx.lineTo(x, Y(x)); ctx.stroke(); }
+}
+function blobs(ctx, r, W, H, n, blur, col, yMax) {
+  ctx.filter = `blur(${blur}px)`;
+  for (let i = 0; i < n; i++) { ctx.fillStyle = col(r); ctx.beginPath(); ctx.ellipse(r() * W, r() * H * yMax, W * (.08 + r() * .15), H * (.03 + r() * .06), 0, 0, 7); ctx.fill(); }
+  ctx.filter = 'none';
+}
+function figure(ctx, x, y, s, col) {
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.ellipse(x, y - s * .88, s * .1, s * .12, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - s * .28, y - s * .72); ctx.quadraticCurveTo(x - s * .38, y - s * .2, x - s * .3, y + s * .15);
+  ctx.lineTo(x + s * .3, y + s * .15); ctx.quadraticCurveTo(x + s * .38, y - s * .2, x + s * .28, y - s * .72); ctx.closePath(); ctx.fill();
+}
+
+const GEN = {
+  'Deep desert': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#f3e3c6'], [.45, '#d9a867'], [1, '#6e4020']]); ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,250,235,.9)'; ctx.beginPath(); ctx.arc(W * rand(.2, .8), H * rand(.12, .25), H * .04, 0, 7); ctx.fill();
+    for (let i = 0; i < 6; i++) { const t = i / 5; ridge(ctx, r, W, H, H * (.4 + t * .45), H * (.05 + t * .04), `hsl(30,${45 - t * 10}%,${70 - t * 32}%)`, `hsl(24,50%,${38 - t * 22}%)`, `rgba(255,236,200,${.5 - t * .3})`); }
+    speckle(ctx, r, W, H, 2500, .2);
+  },
+  'Harkonnen city': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#1a2124'], [.45, '#56666b'], [.5, '#1b2326'], [1, '#07090a']]); ctx.fillRect(0, 0, W, H);
+    blobs(ctx, r, W, H, 18, 30, r => `rgba(${120 + r() * 60},${140 + r() * 50},${150 + r() * 40},.18)`, .5);
+    ctx.fillStyle = '#0a0d0e'; ctx.beginPath(); ctx.moveTo(W * .2, H * .5); ctx.quadraticCurveTo(W * .5, H * .18, W * .8, H * .5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(200,230,240,.9)'; ctx.fillRect(W * .5 - 2, H * .12, 4, H * .2);
+    ctx.fillStyle = grad(ctx, H * .1, H * .35, [[0, 'rgba(200,230,240,0)'], [1, 'rgba(200,230,240,.25)']]); ctx.fillRect(W * .47, H * .1, W * .06, H * .25);
+    for (let i = 0; i < 120; i++) { ctx.fillStyle = `rgba(210,235,245,${r() * .6})`; ctx.fillRect(W * (.2 + r() * .6), H * (.42 + r() * .1), 2, 2); }
+    ctx.strokeStyle = 'rgba(140,165,170,.35)'; ctx.lineWidth = 2; for (let i = -6; i <= 6; i++) { ctx.beginPath(); ctx.moveTo(W * .5 + i * 8, H * .52); ctx.lineTo(W * .5 + i * 120, H); ctx.stroke(); }
+  },
+  'Twin moons': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#05070b'], [.7, '#1c2330'], [1, '#2c2a2a']]); ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 700; i++) { ctx.fillStyle = `rgba(255,255,255,${r() * r()})`; ctx.fillRect(r() * W, r() * H * .75, 1.3, 1.3); }
+    const m = (x, y, rad) => { const g = ctx.createRadialGradient(x - rad * .3, y - rad * .3, rad * .1, x, y, rad); g.addColorStop(0, '#f4efe4'); g.addColorStop(1, '#8c8578'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(80,70,60,.25)'; for (let i = 0; i < 14; i++) { ctx.beginPath(); ctx.arc(x + (r() - .5) * rad * 1.3, y + (r() - .5) * rad * 1.3, rad * (.05 + r() * .15), 0, 7); ctx.fill(); } };
+    m(W * .62, H * .3, H * .2); m(W * .32, H * .42, H * .07);
+    for (let i = 0; i < 3; i++) ridge(ctx, r, W, H, H * (.72 + i * .08), H * (.04 + i * .015), `hsl(220,10%,${16 - i * 5}%)`, '#050506', i === 0 ? 'rgba(220,225,235,.25)' : null);
+  },
+  'Planet limb': (ctx, r, W, H) => {
+    ctx.fillStyle = '#030304'; ctx.fillRect(0, 0, W, H);
+    const cx = W * .5, cy = H * 2.1, R = H * 1.75;
+    const g = ctx.createRadialGradient(cx, cy, R * .96, cx, cy, R * 1.03); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.55, 'rgba(255,190,120,.9)'); g.addColorStop(.7, 'rgba(255,230,190,.5)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#050403'; ctx.beginPath(); ctx.arc(cx, cy, R * .985, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,200,140,.35)'; for (let i = 0; i < 200; i++) { const a = -Math.PI / 2 + (r() - .5) * .9, rr = R * (.99 + r() * .03); ctx.fillRect(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, 2 + r() * 10, 1); }
+    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(W * .45, H * .66, W * .02, H * .012, 0, 0, 7); ctx.fill();
+  },
+  'Sandworm maw': (ctx, r, W, H) => {
+    ctx.fillStyle = '#b48454'; ctx.fillRect(0, 0, W, H);
+    const cx = W * rand(.45, .55), cy = H * rand(.45, .55);
+    for (let ring = 14; ring >= 0; ring--) {
+      const R = 30 + ring * 32, l = 14 + ring * 4;
+      ctx.fillStyle = `hsl(28,${20 + ring * 2}%,${l}%)`; ctx.beginPath(); ctx.arc(cx, cy, R + 20, 0, 7); ctx.fill();
+      const n = 20 + ring * 8; ctx.fillStyle = `hsl(40,25%,${55 + ring * 2}%)`;
+      for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2 + ring * .3, x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R, w = 5 + ring * .5; ctx.beginPath(); ctx.moveTo(x + Math.cos(a + 1.57) * w, y + Math.sin(a + 1.57) * w); ctx.lineTo(x - Math.cos(a + 1.57) * w, y - Math.sin(a + 1.57) * w); ctx.lineTo(cx + Math.cos(a) * (R - 18 - ring), cy + Math.sin(a) * (R - 18 - ring)); ctx.fill(); }
+    }
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 70); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, 70, 0, 7); ctx.fill();
+    speckle(ctx, r, W, H, 5000, .35);
+  },
+  'Legion on parade': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#f1e7d8'], [.5, '#d8c3a4'], [1, '#bda487']]); ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#9d8468'; ctx.beginPath(); ctx.moveTo(0, H * .62); ctx.quadraticCurveTo(W * .35, H * .05, W * .95, H * .55); ctx.lineTo(W, H * .62); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(80,60,40,.35)'; for (let i = 0; i < 18; i++) { ctx.beginPath(); ctx.moveTo(W * i / 18, H * .2); ctx.lineTo(W * i / 18, H * .62); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(240,230,215,.55)'; ctx.fillRect(0, H * .1, W, H * .2);
+    ctx.fillStyle = '#b13b2e'; ctx.fillRect(W * .2, H * .22, W * .02, H * .3);
+    for (let row = 0; row < 14; row++) {
+      const y = H * (.64 + row * row * .0022), s = 3 + row * 1.6, gap = s * 1.7;
+      for (let x = (row % 2) * gap / 2; x < W; x += gap) { if (Math.abs(x - W * .5) < s * 1.5) continue; ctx.fillStyle = `rgba(${45 + r() * 20},${35 + r() * 15},${28},.95)`; ctx.beginPath(); ctx.arc(x, y - s * .9, s * .55, 0, 7); ctx.fill(); ctx.fillRect(x - s * .5, y - s * .5, s, s * 1.4); }
+    }
+  },
+  'Throne chamber': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#0b1112'], [1, '#050707']]); ctx.fillRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(W * .45, 0, W * .55, 0); g.addColorStop(0, 'rgba(120,170,175,0)'); g.addColorStop(.5, 'rgba(150,200,205,.35)'); g.addColorStop(1, 'rgba(120,170,175,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(W * .47, 0); ctx.lineTo(W * .53, 0); ctx.lineTo(W * .58, H * .8); ctx.lineTo(W * .42, H * .8); ctx.fill();
+    ctx.fillStyle = 'rgba(160,210,215,.25)'; ctx.beginPath(); ctx.ellipse(W * .5, H * .8, W * .1, H * .03, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#1a2425'; ctx.fillRect(W * .44, H * .72, W * .12, H * .08);
+    figure(ctx, W * .5, H * .7, H * .2, '#020303');
+    figure(ctx, W * .3, H * .8, H * .22, '#020303');
+    for (let i = 0; i < 10; i++) { ctx.fillStyle = 'rgba(90,120,125,.12)'; ctx.fillRect(W * (.05 + i * .1), 0, 2, H); }
+  },
+  'Spice haze': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#3b1d0c'], [.5, '#c46a28'], [1, '#e9b577']]); ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 1600; i++) { const s = r() * r() * 5; ctx.fillStyle = `rgba(255,${150 + r() * 80},${60 + r() * 60},${r() * .35})`; ctx.beginPath(); ctx.arc(r() * W, r() * H, s + .5, 0, 7); ctx.fill(); }
+    ctx.globalCompositeOperation = 'source-over';
+    ridge(ctx, r, W, H, H * .82, H * .04, '#4a2410', '#1a0b04', 'rgba(255,190,120,.4)');
+    figure(ctx, W * rand(.3, .7), H * .8, H * .12, '#120804');
+  },
+  'Fire at Arrakeen': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#1a0a04'], [.6, '#5a1f08'], [1, '#2a0d04']]); ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.filter = 'blur(14px)';
+    for (let i = 0; i < 60; i++) { const x = r() * W, y = H * (.35 + r() * .6), s = H * (.05 + r() * .18); const g = ctx.createRadialGradient(x, y, 0, x, y, s); g.addColorStop(0, 'rgba(255,230,160,.9)'); g.addColorStop(.4, 'rgba(255,120,30,.5)'); g.addColorStop(1, 'rgba(120,20,0,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, s * .6, s, 0, 0, 7); ctx.fill(); }
+    ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
+    for (let x = 0; x < W; x += 8 + r() * 10) { figure(ctx, x, H * .98, H * (.04 + r() * .03), 'rgba(15,6,2,.95)'); }
+    speckle(ctx, r, W, H, 1500, .5);
+  },
+  'Shield wall': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#8c7a66'], [.5, '#c7a784'], [1, '#6e5238']]); ctx.fillRect(0, 0, W, H);
+    blobs(ctx, r, W, H, 20, 26, r => `rgba(${150 + r() * 60},${120 + r() * 40},${90 + r() * 30},.5)`, .5);
+    ctx.fillStyle = '#2b1f16'; ctx.beginPath(); ctx.moveTo(0, H); let y = H * .45; for (let x = 0; x <= W; x += 8) { y = clamp(y + (r() - .5) * 26, H * .3, H * .6); ctx.lineTo(x, y); } ctx.lineTo(W, H); ctx.fill();
+    ridge(ctx, r, W, H, H * .86, H * .025, '#b88f62', '#6a4a2c', 'rgba(255,230,190,.35)');
+  },
+};
+const PORTRAIT_GEN = {
+  'Baron’s guard': (ctx, r, W, H) => {
+    ctx.fillStyle = grad(ctx, 0, H, [[0, '#0d1311'], [1, '#050706']]); ctx.fillRect(0, 0, W, H);
+    const g = ctx.createRadialGradient(W * .5, H * .3, 0, W * .5, H * .35, H * .5); g.addColorStop(0, 'rgba(120,150,130,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#060807'; ctx.beginPath(); ctx.ellipse(W * .5, H * .2, W * .1, H * .065, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W * .22, H * .3); ctx.quadraticCurveTo(W * .1, H * .7, W * .25, H); ctx.lineTo(W * .75, H); ctx.quadraticCurveTo(W * .9, H * .7, W * .78, H * .3); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,190,170,.35)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W * .23, H * .31); ctx.quadraticCurveTo(W * .11, H * .7, W * .26, H); ctx.stroke();
+    ctx.fillStyle = 'rgba(170,200,180,.18)'; for (let i = 0; i < 7; i++) ctx.fillRect(W * .35, H * (.35 + i * .06), W * .3, 3);
+  },
+  'Sardaukar concept': (ctx, r, W, H) => {
+    ctx.fillStyle = '#b9b2a6'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,.08)'; ctx.beginPath(); ctx.ellipse(W * .5, H * .93, W * .35, H * .03, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#1d1d1c'; ctx.beginPath(); ctx.ellipse(W * .5, H * .15, W * .09, H * .055, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W * .3, H * .22); ctx.lineTo(W * .7, H * .22); ctx.lineTo(W * .78, H * .6); ctx.lineTo(W * .68, H * .92); ctx.lineTo(W * .32, H * .92); ctx.lineTo(W * .22, H * .6); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#6a2a22'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(W * .15, H * .7); ctx.lineTo(W * .85, H * .55); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2; for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.moveTo(W * .3, H * (.26 + i * .05)); ctx.lineTo(W * .7, H * (.26 + i * .05)); ctx.stroke(); }
+  },
+};
+
+let plateSeed = (Math.random() * 1e9) | 0;
+function genPlate(portrait) {
+  const table = portrait ? PORTRAIT_GEN : GEN;
+  const names = Object.keys(table);
+  const name = pick(names);
+  const W = portrait ? 700 : 1400, H = portrait ? 1100 : 820;
+  const [c, ctx] = mkCanvas(W, H);
+  table[name](ctx, rng(++plateSeed * 2654435761), W, H);
+  return { src: c, name };
+}
+
+/* ------------------------------------------------------------------ */
+/* Image treatment: soft filmbook look, optional sepia                 */
+/* ------------------------------------------------------------------ */
+const MAXDIM = 1400;
+function treat(img, sepia) {
+  const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
+  const k = Math.min(1, MAXDIM / Math.max(w0, h0));
+  const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
+  const [c, ctx] = mkCanvas(w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  let data; try { data = ctx.getImageData(0, 0, w, h); } catch (e) { return c; } /* tainted cross-origin image: keep it untreated */
+  const d = data.data;
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], b = d[i + 2];
+    if (sepia) {
+      const l = .299 * r + .587 * g + .114 * b;
+      r = l * 1.07 + 18; g = l * .93 + 10; b = l * .76 + 2;
+    }
+    /* lifted blacks, softened highlights: matches the slightly milky projection in the video */
+    d[i] = 10 + r * .93; d[i + 1] = 9 + g * .93; d[i + 2] = 9 + b * .92;
+  }
+  ctx.putImageData(data, 0, 0);
+  return c;
+}
+
+/* ------------------------------------------------------------------ */
+/* Image sources                                                       */
+/* ------------------------------------------------------------------ */
+const userImages = [];
+const sourceSel = $('source'), statusEl = $('status');
+let lastUser = -1;
+function loadImage(url, cors) { return new Promise((res, rej) => { const im = new Image(); if (cors) im.crossOrigin = 'anonymous'; im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
+let picsumFailed = false;
+async function fetchImage(portrait) {
+  const src = sourceSel.value;
+  if (src === 'mine' && userImages.length) {
+    let i = (Math.random() * userImages.length) | 0;
+    if (userImages.length > 1 && i === lastUser) i = (i + 1) % userImages.length;
+    lastUser = i; return userImages[i];
+  }
+  if (src === 'picsum' && !picsumFailed) {
+    try {
+      const seed = Math.random().toString(36).slice(2, 9);
+      const [w, h] = portrait ? [700, 1100] : [1400, 820];
+      const im = await Promise.race([loadImage(`https://picsum.photos/seed/${seed}/${w}/${h}`, true), new Promise((_, rej) => setTimeout(rej, 7000))]);
+      return { src: im, name: 'photo ' + seed };
+    } catch (e) {
+      picsumFailed = true;
+      statusEl.textContent = 'picsum.photos did not load here, probably because this viewer blocks outside images. Showing generated plates instead.';
+    }
+  }
+  return genPlate(portrait);
+}
+function gradeFor() { const g = $('grade').value; return g === 'sepia' ? true : g === 'original' ? false : Math.random() < .45; }
+async function makeImage(portrait) { const raw = await fetchImage(portrait); return { img: treat(raw.src, gradeFor()), name: raw.name }; }
+
+/* ------------------------------------------------------------------ */
+/* Tags                                                                */
+/* ------------------------------------------------------------------ */
+const GLYPH_LETTERS = 'ABDEGHIKLMNORSTUWXZ';
+function glyphWord(n) { let s = ''; for (let i = 0; i < n; i++) s += GLYPH_LETTERS[(Math.random() * GLYPH_LETTERS.length) | 0]; return s; }
+function makeTag(kind) {
+  if (kind === 'title') return { kind, lines: [glyphWord(3 + (Math.random() * 7 | 0))] };
+  const n = 2 + (Math.random() * 4 | 0), lines = [];
+  for (let i = 0; i < n; i++) { let l = ''; while (l.length < 28 + Math.random() * 14) l += glyphWord(2 + (Math.random() * 7 | 0)) + ' '; lines.push(l.trim()); }
+  if (Math.random() < .5) lines[n - 1] = lines[n - 1].slice(0, 14 + (Math.random() * 10 | 0));
+  return { kind, lines };
+}
+
+/* ------------------------------------------------------------------ */
+/* Shots: a group of cards (plus ghosts) laid out on the 1920x1080 stage */
+/* ------------------------------------------------------------------ */
+const enabledFx = new Set(FX.map(f => f.id));
+const enabledLayouts = new Set(LAYOUTS.map(l => l.id));
+
+async function buildShot(layoutId, prev, stacked) {
+  const shot = { cards: [], ghosts: [], tag: null, layout: layoutId, born: 0, zoomDir: Math.random() < .6 ? -1 : 1, drift: [rand(-14, 14), rand(-8, 8)] };
+  const cx = VW / 2 + rand(-30, 30), cy = VH / 2 + rand(-20, 10);
+  if (layoutId === 'pair') {
+    const h = rand(560, 640), w = h * .62, gap = rand(44, 60);
+    const [a, b] = await Promise.all([makeImage(true), makeImage(true)]);
+    shot.cards.push({ ...a, cx: cx - (w + gap) / 2, cy, w, h }, { ...b, cx: cx + (w + gap) / 2, cy, w, h });
+    if (Math.random() < .6) shot.blink = { card: 0, frames: [2, 3, 7] };
+  } else if (layoutId === 'art') {
+    const h = rand(640, 760), w = h * rand(.85, .95);
+    shot.cards.push({ ...(await makeImage(true)), cx, cy, w, h });
+  } else {
+    const aspect = layoutId === 'flat' ? 1.85 : 2.39;
+    let w = layoutId === 'flat' ? rand(1000, 1260) : rand(1120, 1540);
+    let h = w / aspect; if (h > 700) { h = 700; w = h * aspect; }
+    shot.cards.push({ ...(await makeImage(false)), cx, cy, w, h });
+  }
+  if (stacked && prev && prev.cards.length === 1 && shot.cards.length === 1) {
+    /* stack cut: the previous front card (and its ghosts) move behind, offset up-right */
+    const f = shot.cards[0];
+    const olds = [prev.cards[0], ...prev.ghosts].slice(0, 2);
+    shot.ghosts = olds.map((o, k) => ({ img: o.img, name: o.name, w: f.w * Math.pow(.957, k + 1), h: f.h * Math.pow(.957, k + 1), dx: 71 * (k + 1), dy: -50 * (k + 1) }));
+    const n = shot.ghosts.length; f.cx -= 36 * n; f.cy += 25 * n;
+  }
+  if ($('tags').value !== 'off' && Math.random() < .6) {
+    const c = shot.cards[shot.cards.length - 1];
+    let pos;
+    if (layoutId === 'pair') pos = 'right';
+    else pos = weighted([{ id: 'bottom', w: 4 }, { id: 'bottomright', w: 2 }, { id: 'topleft', w: 1.5 }, { id: 'bottomleft', w: 1 }]).id;
+    shot.tag = { ...makeTag(pos === 'bottom' || pos === 'right' ? 'title' : 'para'), pos, card: shot.cards.length - 1 };
+  }
+  return shot;
+}
+
+/* ------------------------------------------------------------------ */
+/* Canvas + pre-rendered layers                                        */
+/* ------------------------------------------------------------------ */
+const cv = $('cv'), ctx = cv.getContext('2d');
+let S = 1;                  /* device pixels per virtual pixel */
+let dotLayer = null, vignette = null;
+const grainTiles = [];
+for (let i = 0; i < 4; i++) {
+  const [c, g] = mkCanvas(256, 256); const id = g.createImageData(256, 256);
+  for (let p = 0; p < id.data.length; p += 4) { const v = Math.random() * 255; id.data[p] = id.data[p + 1] = id.data[p + 2] = v; id.data[p + 3] = 255; }
+  g.putImageData(id, 0, 0); grainTiles.push(c);
+}
+
+/* smoke: value-noise fbm, weighted to the lower third and right edge like the video */
+const smoke = (() => {
+  const W = 640, H = 360, [c, g] = mkCanvas(W, H), id = g.createImageData(W, H);
+  const r = rng(77), P = []; for (let i = 0; i < 512; i++) P.push(r());
+  const h = (x, y) => P[((x & 255) + ((y & 255) * 57 & 255)) & 511];
+  const n = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf); return (h(xi, yi) * (1 - u) + h(xi + 1, yi) * u) * (1 - v) + (h(xi, yi + 1) * (1 - u) + h(xi + 1, yi + 1) * u) * v; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let f = 0, a = .5, fx = x / 70, fy = y / 50; for (let o = 0; o < 5; o++) { f += a * n(fx, fy); fx *= 2.1; fy *= 2.1; a *= .5; }
+    const yb = clamp((y / H - .55) / .45, 0, 1), xr = clamp((x / W - .72) / .28, 0, 1) * clamp((y / H - .1) / .5, 0, 1);
+    let m = clamp((f - .45) * 2.2, 0, 1) * clamp(Math.pow(yb, 1.6) + Math.pow(xr, 1.8) * .7, 0, 1);
+    const i = (y * W + x) * 4; const v = 60 + f * 90;
+    id.data[i] = v; id.data[i + 1] = v; id.data[i + 2] = v * 1.04; id.data[i + 3] = m * 255;
+  }
+  g.putImageData(id, 0, 0); return c;
+})();
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(320, Math.round(r.width * dpr)), h = Math.round(w * 9 / 16);
+  if (cv.width === w && cv.height === h) return;
+  cv.width = w; cv.height = h; S = w / VW;
+  /* dot-matrix screen: dark gaps between round cells, pitch ~3 virtual px */
+  const pitch = Math.max(2, Math.round(3 * S));
+  const [tile, tg] = mkCanvas(pitch, pitch);
+  tg.fillStyle = '#000'; tg.fillRect(0, 0, pitch, pitch);
+  tg.globalCompositeOperation = 'destination-out'; tg.beginPath(); tg.arc(pitch / 2, pitch / 2, pitch * .42, 0, 7); tg.fill();
+  const [dl, dg] = mkCanvas(w, h); dg.fillStyle = dg.createPattern(tile, 'repeat'); dg.fillRect(0, 0, w, h); dotLayer = dl;
+  const [vl, vg] = mkCanvas(w, h); const gr = vg.createRadialGradient(w / 2, h * .48, h * .25, w / 2, h / 2, w * .62);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.55)'); vg.fillStyle = gr; vg.fillRect(0, 0, w, h); vignette = vl;
+}
+new ResizeObserver(resize).observe(cv);
+
+/* ------------------------------------------------------------------ */
+/* Drawing                                                             */
+/* ------------------------------------------------------------------ */
+function drawCover(img, x, y, w, h, zoom, px, py) {
+  const iw = img.width, ih = img.height, s = Math.max(w / iw, h / ih) * zoom;
+  const sw = w / s, sh = h / s;
+  const sx = clamp((iw - sw) / 2 + px * (iw - sw) / 2, 0, iw - sw), sy = clamp((ih - sh) / 2 + py * (ih - sh) / 2, 0, ih - sh);
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+function drawFrameCard(img, cx, cy, w, h, alpha, zoom, pan) {
+  const x = cx - w / 2, y = cy - h / 2;
+  /* image first; below 1 alpha the ghost card behind shows through, as in the video */
+  ctx.globalAlpha = alpha;
+  drawCover(img, x, y, w, h, zoom, pan[0], pan[1]);
+  ctx.globalAlpha = 1;
+  /* cream border with a soft halo; the dot-matrix pass breaks the halo into dots like the source */
+  ctx.save();
+  ctx.shadowColor = 'rgba(245,232,210,.4)'; ctx.shadowBlur = 24 * S;
+  ctx.strokeStyle = '#eee4d3'; ctx.lineWidth = 4; ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(168,176,186,.6)'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 1; ctx.strokeRect(x - 4.5, y - 4.5, w + 9, h + 9);
+}
+function drawTag(tag, card) {
+  const x0 = card.cx - card.w / 2, y0 = card.cy - card.h / 2, x1 = x0 + card.w, y1 = y0 + card.h;
+  const title = tag.kind === 'title';
+  const fs = title ? 26 : 12.5, lh = title ? 34 : 15.5, padX = title ? 22 : 12, padY = title ? 8 : 7;
+  ctx.font = `${fs}px "Uncial Antiqua", "Cormorant", Georgia, serif`;
+  const tw = Math.max(...tag.lines.map(l => ctx.measureText(l).width));
+  const bw = tw + padX * 2, bh = tag.lines.length * lh + padY * 2 - (title ? 4 : 0);
+  let bx, by;
+  if (tag.pos === 'bottom') { bx = card.cx - bw / 2; by = y1 - 10; }
+  else if (tag.pos === 'bottomright') { bx = x1 - bw * .62; by = y1 - 6; }
+  else if (tag.pos === 'bottomleft') { bx = x0 - 18; by = y1 + 6; }
+  else if (tag.pos === 'topleft') { bx = x0 - 22; by = y0 - bh * .55; }
+  else { bx = x1 + 14; by = card.cy - bh / 2 - 20; }
+  ctx.fillStyle = '#ad4034'; ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(bx, by + bh - 2, bw, 2);
+  ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+  tag.lines.forEach((l, i) => {
+    const ty = by + padY + i * lh + (title ? 2 : 0);
+    ctx.fillStyle = 'rgba(70,12,8,.75)'; ctx.fillText(l, bx + padX + 1.5, ty + 2);
+    ctx.fillStyle = '#f5ddc9'; ctx.fillText(l, bx + padX, ty);
+  });
+}
+function drawShot(shot, t, tr) {
+  /* tr = { dx, dy, s, hide, hideCards } from the active transition */
+  if (!shot || tr.hide) return;
+  const age = t - shot.born, hold = val('hold') + 1.5;
+  const k = clamp(age / hold, 0, 1.4);
+  const holdScale = 1 + shot.zoomDir * .04 * k;
+  const s = tr.s * holdScale;
+  const ox = VW / 2, oy = VH / 2;
+  ctx.save();
+  ctx.translate(ox + tr.dx + shot.drift[0] * k, oy + tr.dy + shot.drift[1] * k);
+  ctx.scale(s, s);
+  ctx.translate(-ox, -oy);
+  const inner = 1.03 + .05 * k, pan = [.25 * shot.drift[0] / 14 * k, .2 * shot.drift[1] / 8 * k];
+  if (!tr.hideCards) {
+    const f = shot.cards[0];
+    for (let i = shot.ghosts.length - 1; i >= 0; i--) {
+      const g = shot.ghosts[i];
+      drawFrameCard(g.img, f.cx + g.dx, f.cy + g.dy, g.w, g.h, .92, 1.03, [0, 0]);
+    }
+    const frameIdx = Math.floor(age * FPS);
+    shot.cards.forEach((c, i) => {
+      if (shot.blink && shot.blink.card === i && shot.blink.frames.includes(frameIdx)) return;
+      drawFrameCard(c.img, c.cx, c.cy, c.w, c.h, shot.ghosts.length ? .9 : 1, inner, pan);
+    });
+  }
+  if (shot.tag) drawTag(shot.tag, shot.cards[shot.tag.card]);
+  ctx.restore();
+}
+
+function drawBackground(t) {
+  ctx.fillStyle = '#070707'; ctx.fillRect(0, 0, VW, VH);
+  const sm = val('smoke');
+  if (sm > 0) {
+    /* two copies drifting at different speeds so the smoke slowly churns in place */
+    const a = Math.sin(t * .05) * 60, b = Math.sin(t * .037 + 1) * 90;
+    ctx.globalAlpha = sm * .55; ctx.drawImage(smoke, a - 60, 0, VW + 120, VH);
+    ctx.globalAlpha = sm * .35; ctx.drawImage(smoke, b - 90, 12, VW + 180, VH + 20);
+    ctx.globalAlpha = 1;
+  }
+}
+function drawFlares(t) {
+  const f = val('flare'); if (f <= 0) return;
+  [[575, -2, 0], [1765, VH + 2, 2.1]].forEach(([x, y, ph]) => {
+    const tw = .85 + .15 * Math.sin(t * 1.3 + ph) + .05 * Math.sin(t * 7.1 + ph * 3);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = f * tw;
+    let g = ctx.createRadialGradient(x, y, 0, x, y, 90); g.addColorStop(0, 'rgba(220,235,255,.9)'); g.addColorStop(.12, 'rgba(200,215,240,.45)'); g.addColorStop(.4, 'rgba(255,200,160,.08)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(x - 90, y - 90, 180, 180);
+    g = ctx.createRadialGradient(x, y, 0, x, y, 12); g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fill();
+    ctx.globalAlpha = f * tw * .35; ctx.fillStyle = 'rgba(210,225,255,1)';
+    ctx.beginPath(); ctx.ellipse(x, y, 150, 1.6, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  });
+}
+function drawPost(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const dots = val('dots');
+  if (dots > 0 && dotLayer) { ctx.globalAlpha = dots * .55; ctx.drawImage(dotLayer, 0, 0); ctx.globalAlpha = 1; }
+  if (vignette) ctx.drawImage(vignette, 0, 0);
+  const gr = val('grain');
+  if (gr > 0) {
+    ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = gr * .22;
+    const tile = grainTiles[Math.floor(t * FPS) % grainTiles.length];
+    ctx.fillStyle = ctx.createPattern(tile, 'repeat');
+    const ox = Math.random() * 256, oy = Math.random() * 256;
+    ctx.translate(-ox, -oy); ctx.fillRect(0, 0, cv.width + 256, cv.height + 256);
+    ctx.restore();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Transitions                                                         */
+/* ------------------------------------------------------------------ */
+const ID = { dx: 0, dy: 0, s: 1 };
+function extent(shot, dir) {
+  let a = Infinity, b = -Infinity;
+  shot.cards.forEach(c => { const lo = dir === 'h' ? c.cx - c.w / 2 : c.cy - c.h / 2, hi = dir === 'h' ? c.cx + c.w / 2 : c.cy + c.h / 2; a = Math.min(a, lo); b = Math.max(b, hi); });
+  shot.ghosts.forEach(g => { const f = shot.cards[0]; const c = dir === 'h' ? f.cx + g.dx : f.cy + g.dy, e = dir === 'h' ? g.w : g.h; a = Math.min(a, c - e / 2); b = Math.max(b, c + e / 2); });
+  return [a, b];
+}
+function coverScale(shot) { const [x0, x1] = extent(shot, 'h'), [y0, y1] = extent(shot, 'v'); return Math.max(VW / (x1 - x0), VH / (y1 - y0)) * 1.06; }
+
+/* each returns { dur, frame(p, tSec) -> { old: tr, cur: tr } } ; p in 0..1 */
+const TRANSITIONS = {
+  stack: () => ({ dur: 6 / FPS, frame: p => ({ old: { hide: true }, cur: { dx: 30 * (1 - easeOutCubic(p)), dy: 0, s: 1 } }) }),
+  settle: () => ({ dur: 7 / FPS, frame: p => ({ old: { hide: true }, cur: { dx: 0, dy: 0, s: 1 + .12 * (1 - easeOutCubic(p)) } }) }),
+  slam: (prev, cur) => { const c = coverScale(cur); return { dur: 11 / FPS, frame: p => ({ old: { hide: true }, cur: { dx: 0, dy: 0, s: 1 + (c - 1) * (1 - easeOutQuart(p)) } }) }; },
+  power: () => ({
+    dur: 14 / FPS,
+    frame: (p, t, f) => {
+      /* frame-accurate copy of 0:03.9: blank, 145%, 135%, tag-only, 112% then ease */
+      if (f < 2) return { old: { hide: true }, cur: { hide: true } };
+      if (f === 2) return { old: { hide: true }, cur: { dx: 0, dy: -40, s: 1.45 } };
+      if (f === 3) return { old: { hide: true }, cur: { dx: -60, dy: -10, s: 1.35 } };
+      if (f === 4) return { old: { hide: true }, cur: { dx: 0, dy: 0, s: 1, hideCards: true } };
+      const q = clamp((f - 5) / 9, 0, 1);
+      return { old: { hide: true }, cur: { dx: 0, dy: 0, s: 1 + .12 * (1 - easeOutCubic(q)) } };
+    },
+  }),
+  push: (prev, cur) => {
+    const dir = pick(['left', 'right', 'up', 'down']);
+    const axis = dir === 'left' || dir === 'right' ? 'h' : 'v';
+    const [a0, a1] = extent(prev, axis), [b0, b1] = extent(cur, axis);
+    const gap = axis === 'h' ? 70 : 60;
+    const sign = dir === 'right' || dir === 'down' ? 1 : -1;
+    /* distance so the new group ends where it belongs and the old one leaves with a gap between them */
+    const dist = sign > 0 ? (a1 - b0) + gap : (b1 - a0) + gap;
+    return {
+      dur: 10 / FPS, dir,
+      frame: p => {
+        const e = easeInOutCubic(p), m = sign * dist * e, n = -sign * dist * (1 - e);
+        return axis === 'h' ? { old: { dx: m, dy: 0, s: 1 }, cur: { dx: n, dy: 0, s: 1 } } : { old: { dx: 0, dy: m, s: 1 }, cur: { dx: 0, dy: n, s: 1 } };
+      },
+    };
+  },
+  rapid: () => ({ dur: 0, frame: () => ({ old: { hide: true }, cur: ID }) }),
+  black: () => ({ dur: 1.2, frame: (p, t, f) => ({ old: { hide: true }, cur: { hide: true } }) }),
+};
+
+/* ------------------------------------------------------------------ */
+/* Playback                                                            */
+/* ------------------------------------------------------------------ */
+const ctrlIds = ['hold', 'speed', 'dots', 'grain', 'smoke', 'flare'];
+const fmt = { hold: v => v.toFixed(1) + ' s', speed: v => v.toFixed(2) + '×' };
+ctrlIds.forEach(k => { const el = $(k), out = $(k + 'Out'); const show = () => out.textContent = fmt[k] ? fmt[k](+el.value) : Math.round(+el.value * 100) + '%'; el.addEventListener('input', show); show(); });
+const val = k => parseFloat($(k).value);
+
+function chipRow(el, list, set, keyBase) {
+  list.forEach((f, i) => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.type = 'button'; b.id = 'chip-' + f.id;
+    b.innerHTML = keyBase ? `<kbd>${i + 1}</kbd>${f.name}` : f.name;
+    b.setAttribute('aria-pressed', 'true');
+    b.addEventListener('click', () => { if (set.has(f.id) && set.size > 1) set.delete(f.id); else set.add(f.id); b.setAttribute('aria-pressed', set.has(f.id)); });
+    el.appendChild(b);
+  });
+}
+chipRow($('fxChips'), FX, enabledFx, true);
+chipRow($('layoutChips'), LAYOUTS, enabledLayouts, false);
+
+const state = { prev: null, cur: null, next: null, tr: null, trStart: 0, trName: 'Power-on', holdStart: 0, playing: true, busy: false, forced: null, rapid: null, lastFx: null };
+const clock = { t: 0, last: performance.now() };
+const now = () => clock.t;
+
+function pickLayout(forFx) {
+  let pool = LAYOUTS.filter(l => enabledLayouts.has(l.id));
+  if (forFx === 'stack' || forFx === 'rapid') { const single = pool.filter(l => l.id !== 'pair'); if (single.length) pool = single; }
+  return weighted(pool).id;
+}
+function pickFx() {
+  if (state.forced) { const f = state.forced; state.forced = null; return f; }
+  let pool = FX.filter(f => enabledFx.has(f.id));
+  if (pool.length > 1) pool = pool.filter(f => f.id !== state.lastFx || f.id === 'push');
+  return weighted(pool).id;
+}
+
+async function advance() {
+  if (state.busy) return; state.busy = true;
+  try {
+    const fx = pickFx(); state.lastFx = fx;
+    const layout = pickLayout(fx);
+    const prev = state.cur;
+    const shot = await buildShot(layout, prev, fx === 'stack');
+    if (fx === 'rapid') {
+      /* a burst of hard cuts inside the same card, every 3-5 frames */
+      const frames = []; for (let i = 0; i < 5; i++) frames.push((await makeImage(shot.layout === 'pair' || shot.layout === 'art')).img);
+      state.rapid = { imgs: frames, start: now(), steps: frames.map(() => (3 + Math.random() * 3 | 0) / FPS) };
+    }
+    const maker = TRANSITIONS[fx];
+    const tr = maker(prev || shot, shot);
+    state.prev = prev; state.cur = shot; state.tr = tr; state.trStart = now();
+    shot.born = now() + (fx === 'black' ? tr.dur : 0);
+    const name = FX.find(f => f.id === fx).name + (tr.dir ? ' ' + { left: '←', right: '→', up: '↑', down: '↓' }[tr.dir] : '');
+    state.trName = name;
+    $('hudFx').textContent = name;
+    $('hudInfo').textContent = shot.cards.map(c => c.name).join(' + ') + (shot.ghosts.length ? ` · ${shot.ghosts.length} ghost${shot.ghosts.length > 1 ? 's' : ''}` : '');
+    document.querySelectorAll('#fxChips .chip').forEach(c => c.classList.toggle('now', c.id === 'chip-' + fx));
+    if (fx === 'black') state.afterBlack = true;
+  } finally { state.busy = false; }
+}
+
+function frame(ms) {
+  const dt = Math.min(.1, (ms - clock.last) / 1000); clock.last = ms;
+  const speed = val('speed');
+  clock.t += dt;
+  const t = now();
+
+  ctx.setTransform(S, 0, 0, S, 0, 0);
+  drawBackground(t);
+  drawFlares(t);
+
+  let oldTr = { hide: true }, curTr = ID;
+  if (state.tr) {
+    const dur = state.tr.dur / speed;
+    const el = t - state.trStart;
+    const p = dur > 0 ? clamp(el / dur, 0, 1) : 1;
+    const f = Math.floor(el * speed * FPS);
+    const r = state.tr.frame(p, el, f);
+    oldTr = r.old; curTr = r.cur;
+    if (p >= 1) {
+      state.tr = null; state.prev = null; state.holdStart = t;
+      if (state.afterBlack) { state.afterBlack = false; state.forced = 'power'; state.holdStart = -1e9; }
+    }
+  } else if (state.playing && !state.busy && state.cur && t - state.holdStart > val('hold') + (state.rapid ? state.rapid.steps.reduce((a, b) => a + b, 0) : 0)) {
+    state.rapid = null; advance();
+  }
+  if (state.rapid && state.cur) {
+    let el = (t - state.rapid.start) * speed, i = 0;
+    while (i < state.rapid.steps.length - 1 && el > state.rapid.steps[i]) { el -= state.rapid.steps[i]; i++; }
+    state.cur.cards[0].img = state.rapid.imgs[i];
+  }
+  if (state.prev) drawShot(state.prev, t, { dx: 0, dy: 0, s: 1, ...oldTr });
+  drawShot(state.cur, t, { dx: 0, dy: 0, s: 1, ...curTr });
+
+  drawPost(t);
+  requestAnimationFrame(frame);
+}
+
+/* ------------------------------------------------------------------ */
+/* Controls                                                            */
+/* ------------------------------------------------------------------ */
+function next(fx) { if (state.tr || state.busy) return; if (fx) state.forced = fx; state.rapid = null; advance(); }
+$('nextBtn').addEventListener('click', () => next());
+const playBtn = $('playBtn');
+function togglePlay() { state.playing = !state.playing; playBtn.textContent = state.playing ? 'Pause' : 'Play'; if (state.playing) state.holdStart = now(); }
+playBtn.addEventListener('click', togglePlay);
+$('restartBtn').addEventListener('click', () => { if (state.tr || state.busy) return; state.cur = null; state.prev = null; state.rapid = null; next('power'); });
+$('fsBtn').addEventListener('click', () => { const s = $('stage'); try { const r = document.fullscreenElement ? document.exitFullscreen() : s.requestFullscreen?.(); r?.catch?.(() => {}); } catch (e) {} });
+$('hudOn').addEventListener('change', e => $('stage').classList.toggle('clean', !e.target.checked));
+sourceSel.addEventListener('change', () => { picsumFailed = false; statusEl.textContent = sourceSel.value === 'mine' && !userImages.length ? 'Add images first. Until then the generated plates keep playing.' : ''; });
+
+async function addFiles(files) {
+  const list = [...files].filter(f => f.type.startsWith('image/'));
+  if (!list.length) { statusEl.textContent = 'Those files are not images. Use JPG, PNG, WebP or GIF.'; return; }
+  for (const f of list) {
+    const url = URL.createObjectURL(f);
+    try { const im = await loadImage(url, false); const [c, g] = mkCanvas(im.naturalWidth, im.naturalHeight); g.drawImage(im, 0, 0); userImages.push({ src: c, name: f.name }); }
+    catch (e) { statusEl.textContent = `Could not read ${f.name}.`; }
+    finally { URL.revokeObjectURL(url); }
+  }
+  sourceSel.value = 'mine';
+  statusEl.textContent = `${userImages.length} image${userImages.length === 1 ? '' : 's'} loaded. They now play in random order.`;
+}
+$('files').addEventListener('change', e => addFiles(e.target.files));
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files); });
+addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('input, select, textarea')) return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+  else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (/^[1-7]$/.test(e.key)) next(FX[+e.key - 1].id);
+});
+
+/* ------------------------------------------------------------------ */
+/* Boot: empty stage for ~1.7 s, then power-on, like the video         */
+/* ------------------------------------------------------------------ */
+(async () => {
+  resize();
+  try { await Promise.race([document.fonts.load('26px "Uncial Antiqua"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) {}
+  requestAnimationFrame(ms => { clock.last = ms; requestAnimationFrame(frame); });
+  setTimeout(() => next('power'), 1700);
+})();
+})();
+</script>
+</body>
+</html>
