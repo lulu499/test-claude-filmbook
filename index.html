@@ -6,16 +6,16 @@
 <title>Dune Filmbook Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=Syncopate:wght@400;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: a 16:9 projection stage rendered to one canvas (virtual 1920x1080, matching the source video), an operator console, then the frame-by-frame breakdown. Single dark look by design. */
+/* Layout: a 16:9 projection stage rendered by WebGL (virtual 1920x1080, matching the source video), an operator console, then the measured breakdown. Single dark look by design. */
 :root {
-  --void: #070707;        /* stage black, measured from the video background */
+  --void: #070707;        /* stage black, measured (7,7,7) */
   --panel: #111010;       /* console surface */
   --rule: #272423;        /* hairlines */
   --bone: #eee4d3;        /* card border cream, measured */
   --dust: #958c82;        /* secondary text */
-  --tag: #ad4034;         /* tag red, measured (172,64,53) */
+  --tag: #9e362e;         /* tag red */
   --font-display: "Syncopate", "Eurostile", "Arial Black", sans-serif;
   --font-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -30,11 +30,11 @@ header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-cont
 h1 { font: 700 clamp(15px, 2.2vw, 20px)/1.2 var(--font-display); letter-spacing: .32em; text-transform: uppercase; margin: 0; text-wrap: balance; }
 .sub { color: var(--dust); font: 12px/1.4 var(--font-mono); letter-spacing: .06em; }
 
-.stage { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; background: var(--void); overflow: hidden; outline: 1px solid var(--rule); }
+.stage { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; background: #000; overflow: hidden; outline: 1px solid var(--rule); }
 .stage:fullscreen { outline: none; width: 100vw; height: 100vh; aspect-ratio: auto; display: grid; place-items: center; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .stage:fullscreen canvas { position: static; width: min(100vw, 177.78vh); height: auto; aspect-ratio: 16 / 9; }
-.hud { position: absolute; left: 12px; top: 10px; font: 11px/1.4 var(--font-mono); color: var(--dust); letter-spacing: .05em; pointer-events: none; background: rgba(7,7,7,.55); padding: 3px 6px; }
+.hud { position: absolute; left: 12px; top: 10px; font: 11px/1.4 var(--font-mono); color: var(--dust); letter-spacing: .05em; pointer-events: none; background: rgba(7,7,7,.6); padding: 3px 6px; font-variant-numeric: tabular-nums; }
 .hud b { color: var(--bone); font-weight: 500; }
 .stage.clean .hud { display: none; }
 
@@ -48,7 +48,7 @@ button:hover, .btn:hover { border-color: var(--dust); }
 button:focus-visible, .btn:focus-within, select:focus-visible, input:focus-visible { outline: 2px solid var(--bone); outline-offset: 2px; }
 button.primary { background: var(--bone); color: var(--void); border-color: var(--bone); }
 .chip { font: 500 12px/1 var(--font-mono); padding: 8px 10px; letter-spacing: .02em; }
-.chip[aria-pressed="true"] { border-color: var(--tag); color: var(--bone); background: rgba(173, 64, 52, .22); }
+.chip[aria-pressed="true"] { border-color: var(--tag); color: var(--bone); background: rgba(158, 54, 46, .24); }
 .chip kbd { font: inherit; color: var(--dust); margin-right: 6px; }
 .chip.now { box-shadow: inset 0 -2px 0 var(--bone); }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 18px; }
@@ -61,6 +61,8 @@ select { font: 13px var(--font-body); color: var(--bone); background: var(--void
 .check input { accent-color: var(--tag); }
 .btn input[type="file"] { display: none; }
 .status { font: 12px/1.45 var(--font-mono); color: var(--dust); min-height: 1.45em; }
+.hint { color: var(--dust); font-size: 13px; margin: 0; max-width: 60ch; }
+.randomOnly[hidden] { display: none !important; }
 
 .notes { display: grid; gap: 16px; }
 .notes h2 { font: 700 13px/1.3 var(--font-display); letter-spacing: .28em; text-transform: uppercase; margin: 8px 0 0; }
@@ -88,43 +90,51 @@ td { color: var(--dust); }
   </header>
 
   <div class="stage" id="stage">
-    <canvas id="cv" aria-label="Filmbook stage with image cards"></canvas>
-    <div class="hud" id="hud"><b id="hudFx">Power-on</b> · <span id="hudInfo">—</span></div>
+    <canvas id="cv" aria-label="Filmbook stage with video cards"></canvas>
+    <div class="hud" id="hud"><b id="hudFx">Starting</b> · <span id="hudInfo">—</span></div>
   </div>
 
   <section class="console">
     <div class="card">
       <div class="row">
-        <button class="primary" id="nextBtn" title="Right arrow">Next image</button>
+        <button class="primary" id="nextBtn" title="Right arrow">Next shot</button>
         <button id="playBtn" title="Space">Pause</button>
         <button id="restartBtn">Restart</button>
         <button id="fsBtn">Fullscreen</button>
       </div>
-      <div class="field">
-        <span class="label">Transitions · random among selected, weighted like the video</span>
+      <div class="field"><label for="mode">Playback</label>
+        <select id="mode">
+          <option value="script" selected>Replay the House Harkonnen timeline</option>
+          <option value="random">Random shots, weighted like the video</option>
+        </select>
+      </div>
+      <div class="field randomOnly">
+        <span class="label">Transitions · keys 1–7 force one</span>
         <div class="row" id="fxChips"></div>
       </div>
-      <div class="field">
+      <div class="field randomOnly">
         <span class="label">Layouts</span>
         <div class="row" id="layoutChips"></div>
       </div>
       <div class="grid2">
-        <div class="field"><label for="hold">Hold per image <output id="holdOut"></output></label><input type="range" id="hold" min="0.8" max="8" step="0.1" value="3.4"></div>
+        <div class="field randomOnly"><label for="hold">Hold per shot <output id="holdOut"></output></label><input type="range" id="hold" min="0.8" max="8" step="0.1" value="3.2"></div>
         <div class="field"><label for="speed">Transition speed <output id="speedOut"></output></label><input type="range" id="speed" min="0.25" max="2" step="0.05" value="1"></div>
-        <div class="field"><label for="dots">Dot-matrix screen <output id="dotsOut"></output></label><input type="range" id="dots" min="0" max="1" step="0.01" value="0.55"></div>
-        <div class="field"><label for="grain">Grain <output id="grainOut"></output></label><input type="range" id="grain" min="0" max="1" step="0.01" value="0.4"></div>
-        <div class="field"><label for="smoke">Background smoke <output id="smokeOut"></output></label><input type="range" id="smoke" min="0" max="1" step="0.01" value="0.6"></div>
-        <div class="field"><label for="flare">Lens flares <output id="flareOut"></output></label><input type="range" id="flare" min="0" max="1" step="0.01" value="0.8"></div>
+        <div class="field"><label for="led">LED mesh on cards <output id="ledOut"></output></label><input type="range" id="led" min="0" max="1" step="0.01" value="0.6"></div>
+        <div class="field"><label for="bggrid">Background screen grid <output id="bggridOut"></output></label><input type="range" id="bggrid" min="0" max="1" step="0.01" value="0.6"></div>
+        <div class="field"><label for="fringe">Colour fringing <output id="fringeOut"></output></label><input type="range" id="fringe" min="0" max="3" step="0.05" value="0.7"></div>
+        <div class="field"><label for="grain">Grain <output id="grainOut"></output></label><input type="range" id="grain" min="0" max="1" step="0.01" value="0.25"></div>
+        <div class="field"><label for="smoke">Background smoke <output id="smokeOut"></output></label><input type="range" id="smoke" min="0" max="1.5" step="0.01" value="1"></div>
+        <div class="field"><label for="flare">Lens flares <output id="flareOut"></output></label><input type="range" id="flare" min="0" max="1.5" step="0.01" value="1"></div>
       </div>
     </div>
 
     <div class="card">
       <div class="grid2">
-        <div class="field"><label for="source">Image source</label>
+        <div class="field"><label for="source">What plays in the cards</label>
           <select id="source">
-            <option value="gen" selected>Generated Dune plates</option>
+            <option value="gen" selected>Built-in animated clips</option>
+            <option value="mine">My videos and images</option>
             <option value="picsum">Random photos (picsum.photos)</option>
-            <option value="mine">My uploaded images</option>
           </select>
         </div>
         <div class="field"><label for="grade">Colour treatment</label>
@@ -142,56 +152,67 @@ td { color: var(--dust); }
         </div>
       </div>
       <div class="row">
-        <label class="btn" for="files">Add images…<input type="file" id="files" accept="image/*" multiple></label>
+        <label class="btn" for="files">Add videos or images…<input type="file" id="files" accept="video/*,image/*" multiple></label>
         <label class="check"><input type="checkbox" id="hudOn" checked> Transition readout</label>
       </div>
-      <div class="status" id="status">Drop images anywhere on the page to use your own.</div>
+      <p class="hint">Drop in a Dune trailer or any footage. Each card plays its own random 8-second segment, looping, just as the source cards play film clips.</p>
+      <div class="status" id="status">Drop videos or images anywhere on the page to use your own.</div>
     </div>
   </section>
 
   <section class="notes">
     <h2>What the video does</h2>
-    <p class="lede">Measured frame by frame from the 1080p file. Everything happens on one black stage. Images sit in cream-bordered cards that are wider than they are tall, and a dot-matrix screen texture covers the whole picture. Pixel values below are at 1920×1080. Frame counts are at 23.976 fps.</p>
+    <p class="lede">These are frame-accurate measurements from the 1080p file: card edges tracked on every one of its 2,637 frames, FFTs of the textures, and per-pixel border profiles. Values are in pixels at 1920×1080. Frame counts are at 23.976 fps.</p>
     <div class="specs">
-      <div><h3>Stage</h3><p>Near-black (RGB 7,7,7 in corners) with slow grey smoke in the lower third and along the right edge. Two small star flares sit on the edges, one top at x≈575 and one bottom-right at x≈1765, bluish-white with a warm fringe.</p></div>
-      <div><h3>Card border</h3><p>A 1px dark outline, then about 3px of cream (≈238,228,211), then a 1–2px cool grey inner line before the image. This reads as chromatic fringing. A soft cream halo spreads about 15px outside and breaks into dots through the screen texture.</p></div>
-      <div><h3>Card sizes</h3><p>Mostly 2.39:1 “scope” cards, 1100–1540px wide and centred. Also 1.85:1 cards, pairs of tall portrait cards about 0.62:1, and single concept-art cards about 0.9:1.</p></div>
-      <div><h3>Ghost stack</h3><p>On a stack cut, the old card moves behind the new one, scaled to 0.957, shifted +71px right and −50px up. The front card is about 90% opaque, so the ghost’s edge shows through. The stack reaches three deep near the end.</p></div>
-      <div><h3>Red tags</h3><p>Flat red boxes (≈172,64,53) holding cream Chakobsa-style glyphs with a dark red drop shadow. One-line titles sit centred on the bottom edge. Paragraph tags hang off the bottom-right, top-left or right side.</p></div>
-      <div><h3>Motion while holding</h3><p>Cards never sit still. They drift a few pixels and slowly scale by about ±4% over a 3–6 second hold. Source clips also move inside the card. Stills here get a gentle push-in instead.</p></div>
+      <div><h3>Hold motion</h3><p>While a shot holds, everything shrinks linearly by about 2.2% per second toward the exact centre of the frame (959, 539). It never grows and never drifts sideways. This held in all 30 measured holds.</p></div>
+      <div><h3>LED mesh</h3><p>Each card shows a dot grid attached to the card: always 300 cells across its width, so the pitch shrinks with the card (4.36px at 1308 wide, 3.85px at 1154). The grid runs through the border and the glow, which makes the edges look dotted.</p></div>
+      <div><h3>Background</h3><p>One static cloud plate for the whole video. It's near-black (7,7,7) with a smoke bank along the bottom rising up the right edge, covered by a fixed 3px screen grid. There are two constant, non-twinkling flares and a few dust specks drifting at 3–5px per second.</p></div>
+      <div><h3>Border</h3><p>A single cream stroke about 3.6px wide. Colour fringing (blue shifted down-right) gives an amber edge on the top-left and a cool edge on the bottom-right. There's an 8–10px inner glow and a faint warm outer glow biased up-left. Blacks sit at about 9, highlights top out around 240.</p></div>
+      <div><h3>Pushes</h3><p>Consecutive shots sit one full screen apart. A push pans the camera 1,900px sideways or 1,060px vertically. Its position curve is a Laplace CDF: speed grows ×1.5 per frame, peaks at about 300px per frame, then decays ×0.68 per frame. It takes about 26 frames, or 1.1 s.</p></div>
+      <div><h3>Depth moves</h3><p>Zoom-through: the old card shrinks faster and faster to 90%, cuts at the midpoint, and the new card lands at 117% and decays. Slam: the new card starts at about 190% (full-bleed) and decays ×0.8 per frame. Power-on is a slam with one blank frame, and power-off goes on, half, off, on, half, off.</p></div>
+      <div><h3>Ghost stack</h3><p>On a stack cut the old card stays exactly where it is. It powers down to a grey-cream with a stronger dot grid, and its clip keeps playing. The new card lands about 4% bigger, offset (−78, +52), and is slightly see-through. The stack reaches three deep.</p></div>
+      <div><h3>Tags</h3><p>Dark red boxes, about 92% opaque, holding an embossed Coptic-style glyph script. Title tags are 52px tall. Paragraph tags open with a quoted title line and have 25px line spacing. They appear with their card, with no animation.</p></div>
+      <div><h3>Flicker</h3><p>Even the still concept art varies in brightness by ±2–3% from frame to frame, so there's a quiet projector flicker on every card.</p></div>
     </div>
 
     <h2>Shot log</h2>
+    <p class="lede">Push times mark the moment of peak speed. Replay mode starts each push 13 frames earlier, so its peak lands on the same frame as the source.</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Time</th><th>Transition</th><th>What happens</th></tr></thead>
         <tbody>
-          <tr><td>0:00.0</td><td><span class="pill">Live action</span></td><td>Paul opens the filmbook device. Not part of the card system.</td></tr>
-          <tr><td>0:02.3</td><td><span class="pill">Empty stage</span></td><td>Smoke and flares only, for about 1.7 s.</td></tr>
-          <tr><td>0:03.9</td><td><span class="pill power">Power-on</span></td><td>The card flashes in at about 145% scale, then 135%, blanks for one frame (the tag stays), returns at 112% and eases to 100% over about 8 frames.</td></tr>
-          <tr><td>0:09.7</td><td><span class="pill stack">Stack cut</span></td><td>Hard cut. The new card lands in front and slides about 30px left over 6 frames. The old card becomes the ghost behind it.</td></tr>
-          <tr><td>0:13.5</td><td><span class="pill push">Push →</span></td><td>The whole stack slides right off the stage and two portrait cards follow with a gap. The left card blinks off on single frames while it settles.</td></tr>
-          <tr><td>0:17.8</td><td><span class="pill">Cut</span></td><td>Straight cut to a dark wide card.</td></tr>
-          <tr><td>0:19.8</td><td><span class="pill stack">Stack cut</span></td><td>New card in front, ghost behind.</td></tr>
-          <tr><td>0:21.4</td><td><span class="pill">Cut-out</span></td><td>A frameless illustration drifts in diagonally with two tags. This is the one shot without a card.</td></tr>
-          <tr><td>0:24.2</td><td><span class="pill push">Push ←</span></td><td>The new card enters from the right and decelerates into place.</td></tr>
-          <tr><td>0:29.6</td><td><span class="pill stack">Stack cut</span></td><td>A dark card over a light ghost.</td></tr>
-          <tr><td>0:32.8</td><td><span class="pill slam">Slam</span></td><td>The card appears full-bleed, bigger than the stage, then shrinks to its card size in about 10 frames with a tag at the bottom-left.</td></tr>
-          <tr><td>0:42.9</td><td><span class="pill push">Push ↑</span></td><td>The old card and its paragraph tag exit upward as the new card rises from below.</td></tr>
-          <tr><td>0:46.3</td><td><span class="pill">Settle</span></td><td>Cut to the new card at about 112%, easing down to 100% over about 6 frames.</td></tr>
-          <tr><td>0:52.6</td><td><span class="pill push">Push ↓</span></td><td>The new card drops in from the top.</td></tr>
-          <tr><td>0:58.0</td><td><span class="pill push">Push ←</span></td><td>A horizontal push with a visible gap between the cards.</td></tr>
-          <tr><td>1:04.8</td><td><span class="pill push">Push ↓</span></td><td>Vertical push.</td></tr>
-          <tr><td>1:07.2</td><td><span class="pill stack">Stack cut</span></td><td>A close-up lands over the wide crowd shot.</td></tr>
-          <tr><td>1:09.0</td><td><span class="pill push">Push ←</span></td><td>Horizontal push.</td></tr>
-          <tr><td>1:11.2</td><td><span class="pill push">Push ↑</span></td><td>Vertical push with a paragraph tag.</td></tr>
-          <tr><td>1:15.2</td><td><span class="pill stack">Stack cut</span></td><td>The tag hangs off the top-left corner.</td></tr>
-          <tr><td>1:18.5</td><td><span class="pill slam">Rapid cuts</span></td><td>Fire images hard-cut every 3–5 frames in the same card for about 1 s.</td></tr>
-          <tr><td>1:27.3</td><td><span class="pill">Cut</span></td><td>Cut to a concept-art portrait card.</td></tr>
-          <tr><td>1:34.0</td><td><span class="pill stack">Stack cut</span></td><td>Stack cut.</td></tr>
-          <tr><td>1:37.2</td><td><span class="pill stack">Stack cut</span></td><td>The stack becomes three deep with two ghosts.</td></tr>
-          <tr><td>1:39.5</td><td><span class="pill slam">Slam</span></td><td>Full-bleed fire image shrinks down into a card.</td></tr>
-          <tr><td>1:42.7</td><td><span class="pill">Blackout</span></td><td>The card vanishes and only smoke and flares remain, then the end card follows.</td></tr>
+          <tr><td>0:02.3</td><td><span class="pill">Fade in</span></td><td>The stage fades up from black over 12 frames after the live-action opener.</td></tr>
+          <tr><td>0:03.9</td><td><span class="pill power">Power-on</span></td><td>The card flashes full-bleed, then smaller, then blanks for one frame (tag only). It returns at 114% and decays. The card is 1657px wide with a bottom title tag.</td></tr>
+          <tr><td>0:09.7</td><td><span class="pill stack">Stack cut</span></td><td>The new card lands in front, offset down-left. The ghost blinks off for one frame.</td></tr>
+          <tr><td>0:13.5</td><td><span class="pill push">Push →</span></td><td>Cut to a portrait pair (477×739 and 458×712, 68px gap) with a side title tag. The left card blinks.</td></tr>
+          <tr><td>0:17.8</td><td><span class="pill">Zoom-through</span></td><td>The old pair accelerates away and the new card lands at 116%.</td></tr>
+          <tr><td>0:19.8</td><td><span class="pill stack">Stack cut</span></td><td></td></tr>
+          <tr><td>0:21.4</td><td><span class="pill push">Push ↓</span></td><td>A frameless cut-out illustration with a title tag and a paragraph tag.</td></tr>
+          <tr><td>0:24.2</td><td><span class="pill push">Push ←</span></td><td></td></tr>
+          <tr><td>0:29.6</td><td><span class="pill stack">Stack cut</span></td><td></td></tr>
+          <tr><td>0:32.8</td><td><span class="pill slam">Slam</span></td><td>Four frames are full-bleed before the card border reaches the screen.</td></tr>
+          <tr><td>0:38.9</td><td><span class="pill push">Push ←</span></td><td>Paragraph tag at the bottom-right.</td></tr>
+          <tr><td>0:42.1</td><td><span class="pill push">Push ↑</span></td><td></td></tr>
+          <tr><td>0:44.0</td><td><span class="pill stack">Stack cut</span></td><td></td></tr>
+          <tr><td>0:46.3</td><td><span class="pill">Zoom-through</span></td><td>New card at 118%.</td></tr>
+          <tr><td>0:49.0</td><td><span class="pill">Zoom-through</span></td><td></td></tr>
+          <tr><td>0:52.5</td><td><span class="pill push">Push ↓</span></td><td>A 16:9 card.</td></tr>
+          <tr><td>0:57.9</td><td><span class="pill push">Push →</span></td><td></td></tr>
+          <tr><td>1:04.8</td><td><span class="pill push">Push ↓</span></td><td></td></tr>
+          <tr><td>1:07.2</td><td><span class="pill stack">Stack cut</span></td><td></td></tr>
+          <tr><td>1:08.9</td><td><span class="pill push">Push ←</span></td><td></td></tr>
+          <tr><td>1:11.1</td><td><span class="pill push">Push ↑</span></td><td>Paragraph tag.</td></tr>
+          <tr><td>1:15.2</td><td><span class="pill stack">Stack cut</span></td><td>Paragraph tag off the top-left corner.</td></tr>
+          <tr><td>1:18.0</td><td><span class="pill slam">Rapid cuts</span></td><td>A zoom-through lands a card, then fire clips swap inside it after 3, 1, 5, 3, 4 and 6 frames.</td></tr>
+          <tr><td>1:19.5</td><td><span class="pill">Cut</span></td><td></td></tr>
+          <tr><td>1:23.6</td><td><span class="pill push">Push →</span></td><td></td></tr>
+          <tr><td>1:27.3</td><td><span class="pill">Cut</span></td><td>Concept art, 762×835.</td></tr>
+          <tr><td>1:30.9</td><td><span class="pill stack">Stack cut</span></td><td>Concept art, 711×913.</td></tr>
+          <tr><td>1:32.6</td><td><span class="pill push">Push ↓</span></td><td></td></tr>
+          <tr><td>1:34.0</td><td><span class="pill stack">Stack cut</span></td><td></td></tr>
+          <tr><td>1:37.2</td><td><span class="pill stack">Stack cut</span></td><td>Three deep.</td></tr>
+          <tr><td>1:39.5</td><td><span class="pill slam">Slam</span></td><td></td></tr>
+          <tr><td>1:42.7</td><td><span class="pill power">Power-off</span></td><td>On, half, off, on, half, off.</td></tr>
         </tbody>
       </table>
     </div>
@@ -202,515 +223,1178 @@ td { color: var(--dust); }
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
-const VW = 1920, VH = 1080, FPS = 23.976;
+const VW = 1920, VH = 1080, CX = 960, CY = 540, FPS = 23.976;
+const SHRINK = 0.022;                   /* measured: 2.2 % of size per second, toward frame centre */
+const PI = Math.PI;
+const statusEl = $('status');
 
-/* ------------------------------------------------------------------ */
-/* Catalogue                                                           */
-/* ------------------------------------------------------------------ */
-const FX = [
-  { id: 'stack',  name: 'Stack cut',   w: 7 },
-  { id: 'push',   name: 'Push',        w: 8 },
-  { id: 'settle', name: 'Scale settle', w: 2 },
-  { id: 'slam',   name: 'Slam',        w: 2 },
-  { id: 'power',  name: 'Power-on',    w: 1 },
-  { id: 'rapid',  name: 'Rapid cuts',  w: 1 },
-  { id: 'black',  name: 'Blackout',    w: 1 },
-];
-const LAYOUTS = [
-  { id: 'wide', name: 'Scope 2.39', w: 7 },
-  { id: 'flat', name: 'Flat 1.85', w: 2 },
-  { id: 'pair', name: 'Portrait pair', w: 1.5 },
-  { id: 'art',  name: 'Concept card', w: 1 },
-];
-
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 /* Helpers                                                             */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[(Math.random() * a.length) | 0];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
-const easeOutQuart = t => 1 - Math.pow(1 - t, 4);
-const easeInOutCubic = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 function weighted(list) { const tot = list.reduce((s, x) => s + x.w, 0); let r = Math.random() * tot; for (const x of list) { if ((r -= x.w) <= 0) return x; } return list[list.length - 1]; }
-function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
-function rng(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
-
-/* ------------------------------------------------------------------ */
-/* Generated plates (work offline and inside sandboxed viewers)        */
-/* ------------------------------------------------------------------ */
+function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return [c, c.getContext('2d')]; }
+function rng(seed) { let s = (seed >>> 0) || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 function grad(ctx, y0, y1, stops) { const g = ctx.createLinearGradient(0, y0, 0, y1); stops.forEach(([o, c]) => g.addColorStop(o, c)); return g; }
-function speckle(ctx, r, W, H, n, a) { for (let i = 0; i < n; i++) { ctx.fillStyle = `rgba(255,240,220,${r() * a})`; ctx.fillRect(r() * W, r() * H, 1.5, 1.5); } }
-function ridge(ctx, r, W, H, base, amp, top, bot, hl) {
-  const f1 = (.004 + r() * .006) * 900 / W, f2 = (.013 + r() * .01) * 900 / W, p1 = r() * 9, p2 = r() * 9;
-  const Y = x => base + Math.sin(x * f1 + p1) * amp + Math.sin(x * f2 + p2) * amp * .35 - Math.abs(Math.sin(x * f1 * .5 + p2)) * amp * .6;
-  ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 6) ctx.lineTo(x, Y(x)); ctx.lineTo(W, H); ctx.closePath();
-  ctx.fillStyle = grad(ctx, base - amp, H, [[0, top], [1, bot]]); ctx.fill();
-  if (hl) { ctx.strokeStyle = hl; ctx.lineWidth = 2; ctx.beginPath(); for (let x = 0; x <= W; x += 6) ctx.lineTo(x, Y(x)); ctx.stroke(); }
+const NOISE = Float32Array.from({ length: 1024 }, () => Math.random());
+function n1(x) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return NOISE[i & 1023] * (1 - u) + NOISE[(i + 1) & 1023] * u; }
+/* measured push/zoom easing: position follows a Laplace CDF, speed x1.5 per frame up then x0.68 down */
+function laplace(f, k, N) {
+  const raw = x => x < N ? 0.5 * Math.exp(k * (x - N)) : 1 - 0.5 * Math.exp(-k * (x - N));
+  const a = raw(0), b = raw(2 * N);
+  return clamp((raw(clamp(f, 0, 2 * N)) - a) / (b - a), 0, 1);
 }
-function blobs(ctx, r, W, H, n, blur, col, yMax) {
-  ctx.filter = `blur(${blur}px)`;
-  for (let i = 0; i < n; i++) { ctx.fillStyle = col(r); ctx.beginPath(); ctx.ellipse(r() * W, r() * H * yMax, W * (.08 + r() * .15), H * (.03 + r() * .06), 0, 0, 7); ctx.fill(); }
-  ctx.filter = 'none';
+function sprite(size, stops) {
+  const [c, x] = mkCanvas(size, size); const g = x.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  stops.forEach(([o, col]) => g.addColorStop(o, col)); x.fillStyle = g; x.fillRect(0, 0, size, size); return c;
 }
-function figure(ctx, x, y, s, col) {
+/* soft shapes without ctx.filter: draw small, scale up with smoothing */
+function soft(W, H, down, draw) {
+  const [s, sx] = mkCanvas(W / down, H / down); sx.scale(1 / down, 1 / down); draw(sx);
+  const [c, x] = mkCanvas(W, H); x.imageSmoothingQuality = 'high'; x.drawImage(s, 0, 0, W, H); return c;
+}
+/* bake film-like grain into a static layer so built-in clips read less like vector art */
+function grainify(canvas, amount) {
+  const x = canvas.getContext('2d'), id = x.getImageData(0, 0, canvas.width, canvas.height), d = id.data;
+  for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - .5) * amount; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+  x.putImageData(id, 0, 0); return canvas;
+}
+function drawTiled(ctx, img, off, y = 0) { const W = img.width, o = ((off % W) + W) % W; ctx.drawImage(img, -o, y); ctx.drawImage(img, W - o, y); }
+function tileRidge(r, W2, H, base, amp, top, bot, hl) {
+  const [c, x] = mkCanvas(W2, H);
+  const comps = [[1 + (r() * 2 | 0), amp, r() * 6.28], [3 + (r() * 3 | 0), amp * .45, r() * 6.28], [8 + (r() * 5 | 0), amp * .12, r() * 6.28]];
+  const Y = X => base - comps.reduce((s, [n, a, p]) => s + a * Math.sin(X / W2 * 2 * PI * n + p), 0);
+  x.beginPath(); x.moveTo(0, H); for (let X = 0; X <= W2; X += 4) x.lineTo(X, Y(X)); x.lineTo(W2, H); x.closePath();
+  x.fillStyle = grad(x, base - amp * 1.6, H, [[0, top], [1, bot]]); x.fill();
+  if (hl) { x.strokeStyle = hl; x.lineWidth = 1.4; x.beginPath(); for (let X = 0; X <= W2; X += 4) x.lineTo(X, Y(X)); x.stroke(); }
+  return c;
+}
+function cloudLayer(r, W2, H, n, col, yMin, yMax, size) {
+  return soft(W2, H, 6, x => {
+    for (let i = 0; i < n; i++) {
+      const cx = r() * W2, cy = H * (yMin + r() * (yMax - yMin)), rx = size * (.4 + r()), ry = rx * (.25 + r() * .3);
+      x.fillStyle = col(r);
+      for (const dx of [-W2, 0, W2]) { x.beginPath(); x.ellipse(cx + dx, cy, rx, ry, 0, 0, 7); x.fill(); }
+    }
+  });
+}
+function silhouette(ctx, x, y, s, col) {
   ctx.fillStyle = col;
   ctx.beginPath(); ctx.ellipse(x, y - s * .88, s * .1, s * .12, 0, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(x - s * .28, y - s * .72); ctx.quadraticCurveTo(x - s * .38, y - s * .2, x - s * .3, y + s * .15);
-  ctx.lineTo(x + s * .3, y + s * .15); ctx.quadraticCurveTo(x + s * .38, y - s * .2, x + s * .28, y - s * .72); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - s * .26, y - s * .72); ctx.quadraticCurveTo(x - s * .36, y - s * .2, x - s * .3, y + s * .15);
+  ctx.lineTo(x + s * .3, y + s * .15); ctx.quadraticCurveTo(x + s * .36, y - s * .2, x + s * .26, y - s * .72); ctx.closePath(); ctx.fill();
 }
 
-const GEN = {
-  'Deep desert': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#f3e3c6'], [.45, '#d9a867'], [1, '#6e4020']]); ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(255,250,235,.9)'; ctx.beginPath(); ctx.arc(W * rand(.2, .8), H * rand(.12, .25), H * .04, 0, 7); ctx.fill();
-    for (let i = 0; i < 6; i++) { const t = i / 5; ridge(ctx, r, W, H, H * (.4 + t * .45), H * (.05 + t * .04), `hsl(30,${45 - t * 10}%,${70 - t * 32}%)`, `hsl(24,50%,${38 - t * 22}%)`, `rgba(255,236,200,${.5 - t * .3})`); }
-    speckle(ctx, r, W, H, 2500, .2);
-  },
-  'Harkonnen city': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#1a2124'], [.45, '#56666b'], [.5, '#1b2326'], [1, '#07090a']]); ctx.fillRect(0, 0, W, H);
-    blobs(ctx, r, W, H, 18, 30, r => `rgba(${120 + r() * 60},${140 + r() * 50},${150 + r() * 40},.18)`, .5);
-    ctx.fillStyle = '#0a0d0e'; ctx.beginPath(); ctx.moveTo(W * .2, H * .5); ctx.quadraticCurveTo(W * .5, H * .18, W * .8, H * .5); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(200,230,240,.9)'; ctx.fillRect(W * .5 - 2, H * .12, 4, H * .2);
-    ctx.fillStyle = grad(ctx, H * .1, H * .35, [[0, 'rgba(200,230,240,0)'], [1, 'rgba(200,230,240,.25)']]); ctx.fillRect(W * .47, H * .1, W * .06, H * .25);
-    for (let i = 0; i < 120; i++) { ctx.fillStyle = `rgba(210,235,245,${r() * .6})`; ctx.fillRect(W * (.2 + r() * .6), H * (.42 + r() * .1), 2, 2); }
-    ctx.strokeStyle = 'rgba(140,165,170,.35)'; ctx.lineWidth = 2; for (let i = -6; i <= 6; i++) { ctx.beginPath(); ctx.moveTo(W * .5 + i * 8, H * .52); ctx.lineTo(W * .5 + i * 120, H); ctx.stroke(); }
-  },
-  'Twin moons': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#05070b'], [.7, '#1c2330'], [1, '#2c2a2a']]); ctx.fillRect(0, 0, W, H);
-    for (let i = 0; i < 700; i++) { ctx.fillStyle = `rgba(255,255,255,${r() * r()})`; ctx.fillRect(r() * W, r() * H * .75, 1.3, 1.3); }
-    const m = (x, y, rad) => { const g = ctx.createRadialGradient(x - rad * .3, y - rad * .3, rad * .1, x, y, rad); g.addColorStop(0, '#f4efe4'); g.addColorStop(1, '#8c8578'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(80,70,60,.25)'; for (let i = 0; i < 14; i++) { ctx.beginPath(); ctx.arc(x + (r() - .5) * rad * 1.3, y + (r() - .5) * rad * 1.3, rad * (.05 + r() * .15), 0, 7); ctx.fill(); } };
-    m(W * .62, H * .3, H * .2); m(W * .32, H * .42, H * .07);
-    for (let i = 0; i < 3; i++) ridge(ctx, r, W, H, H * (.72 + i * .08), H * (.04 + i * .015), `hsl(220,10%,${16 - i * 5}%)`, '#050506', i === 0 ? 'rgba(220,225,235,.25)' : null);
-  },
-  'Planet limb': (ctx, r, W, H) => {
-    ctx.fillStyle = '#030304'; ctx.fillRect(0, 0, W, H);
-    const cx = W * .5, cy = H * 2.1, R = H * 1.75;
-    const g = ctx.createRadialGradient(cx, cy, R * .96, cx, cy, R * 1.03); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.55, 'rgba(255,190,120,.9)'); g.addColorStop(.7, 'rgba(255,230,190,.5)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#050403'; ctx.beginPath(); ctx.arc(cx, cy, R * .985, 0, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(255,200,140,.35)'; for (let i = 0; i < 200; i++) { const a = -Math.PI / 2 + (r() - .5) * .9, rr = R * (.99 + r() * .03); ctx.fillRect(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, 2 + r() * 10, 1); }
-    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(W * .45, H * .66, W * .02, H * .012, 0, 0, 7); ctx.fill();
-  },
-  'Sandworm maw': (ctx, r, W, H) => {
-    ctx.fillStyle = '#b48454'; ctx.fillRect(0, 0, W, H);
-    const cx = W * rand(.45, .55), cy = H * rand(.45, .55);
-    for (let ring = 14; ring >= 0; ring--) {
-      const R = 30 + ring * 32, l = 14 + ring * 4;
-      ctx.fillStyle = `hsl(28,${20 + ring * 2}%,${l}%)`; ctx.beginPath(); ctx.arc(cx, cy, R + 20, 0, 7); ctx.fill();
-      const n = 20 + ring * 8; ctx.fillStyle = `hsl(40,25%,${55 + ring * 2}%)`;
-      for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2 + ring * .3, x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R, w = 5 + ring * .5; ctx.beginPath(); ctx.moveTo(x + Math.cos(a + 1.57) * w, y + Math.sin(a + 1.57) * w); ctx.lineTo(x - Math.cos(a + 1.57) * w, y - Math.sin(a + 1.57) * w); ctx.lineTo(cx + Math.cos(a) * (R - 18 - ring), cy + Math.sin(a) * (R - 18 - ring)); ctx.fill(); }
-    }
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 70); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, 70, 0, 7); ctx.fill();
-    speckle(ctx, r, W, H, 5000, .35);
-  },
-  'Legion on parade': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#f1e7d8'], [.5, '#d8c3a4'], [1, '#bda487']]); ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#9d8468'; ctx.beginPath(); ctx.moveTo(0, H * .62); ctx.quadraticCurveTo(W * .35, H * .05, W * .95, H * .55); ctx.lineTo(W, H * .62); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(80,60,40,.35)'; for (let i = 0; i < 18; i++) { ctx.beginPath(); ctx.moveTo(W * i / 18, H * .2); ctx.lineTo(W * i / 18, H * .62); ctx.stroke(); }
-    ctx.fillStyle = 'rgba(240,230,215,.55)'; ctx.fillRect(0, H * .1, W, H * .2);
-    ctx.fillStyle = '#b13b2e'; ctx.fillRect(W * .2, H * .22, W * .02, H * .3);
+/* ================================================================== */
+/* Built-in animated clips (the cards play these like film footage)   */
+/* ================================================================== */
+const SW = 640, SH = 360, PW = 360, PH = 560;
+const EMBER = sprite(64, [[0, 'rgba(255,240,200,1)'], [.3, 'rgba(255,160,60,.6)'], [1, 'rgba(120,30,0,0)']]);
+const FLAME = sprite(128, [[0, 'rgba(255,245,210,1)'], [.25, 'rgba(255,190,90,.85)'], [.6, 'rgba(230,90,20,.35)'], [1, 'rgba(90,20,0,0)']]);
+const GLOW = sprite(128, [[0, 'rgba(255,255,255,1)'], [.35, 'rgba(255,255,255,.35)'], [1, 'rgba(255,255,255,0)']]);
+
+const SCENES = {
+  legion: { orient: 'land', sepia: .9, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW, SH);
+    b.fillStyle = grad(b, 0, SH, [[0, '#f7f2ea'], [.55, '#e6d8c3'], [1, '#c9b294']]); b.fillRect(0, 0, SW, SH);
+    const hull = b.createLinearGradient(0, SH * .2, 0, SH * .78); hull.addColorStop(0, '#b9a386'); hull.addColorStop(1, '#8f7659');
+    b.fillStyle = hull; b.beginPath(); b.moveTo(-20, SH * .8); b.quadraticCurveTo(SW * .15, SH * .18, SW * .55, SH * .5); b.quadraticCurveTo(SW * .85, SH * .66, SW * 1.02, SH * .7); b.lineTo(SW, SH * .8); b.closePath(); b.fill();
+    b.strokeStyle = 'rgba(70,52,36,.1)'; for (let i = 0; i < 30; i++) { b.beginPath(); b.moveTo(SW * i / 30, SH * .2); b.lineTo(SW * i / 30 + 12, SH * .8); b.stroke(); }
+    b.fillStyle = 'rgba(245,238,226,.35)'; b.fillRect(0, SH * .45, SW, SH * .35);
+    b.fillStyle = 'rgba(245,238,226,.55)'; b.fillRect(0, SH * .05, SW, SH * .22);
+    const W2 = SW * 2, [ranks, rk] = mkCanvas(W2, SH);
     for (let row = 0; row < 14; row++) {
-      const y = H * (.64 + row * row * .0022), s = 3 + row * 1.6, gap = s * 1.7;
-      for (let x = (row % 2) * gap / 2; x < W; x += gap) { if (Math.abs(x - W * .5) < s * 1.5) continue; ctx.fillStyle = `rgba(${45 + r() * 20},${35 + r() * 15},${28},.95)`; ctx.beginPath(); ctx.arc(x, y - s * .9, s * .55, 0, 7); ctx.fill(); ctx.fillRect(x - s * .5, y - s * .5, s, s * 1.4); }
+      const y = SH * (.8 + row * row * .00085), s = .9 + row * .42, gap = s * 2.2;
+      for (let x = (row % 2) * gap / 2; x < W2; x += gap) { if ((x % 260) < s * 3) continue; rk.fillStyle = `rgba(${72 + r() * 22},${58 + r() * 14},${44 + r() * 8},${.55 + row * .03})`; rk.beginPath(); rk.arc(x, y - s * .9, s * .55, 0, 7); rk.fill(); rk.fillRect(x - s * .5, y - s * .5, s, s * 1.4); }
     }
-  },
-  'Throne chamber': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#0b1112'], [1, '#050707']]); ctx.fillRect(0, 0, W, H);
-    const g = ctx.createLinearGradient(W * .45, 0, W * .55, 0); g.addColorStop(0, 'rgba(120,170,175,0)'); g.addColorStop(.5, 'rgba(150,200,205,.35)'); g.addColorStop(1, 'rgba(120,170,175,0)');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(W * .47, 0); ctx.lineTo(W * .53, 0); ctx.lineTo(W * .58, H * .8); ctx.lineTo(W * .42, H * .8); ctx.fill();
-    ctx.fillStyle = 'rgba(160,210,215,.25)'; ctx.beginPath(); ctx.ellipse(W * .5, H * .8, W * .1, H * .03, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = '#1a2425'; ctx.fillRect(W * .44, H * .72, W * .12, H * .08);
-    figure(ctx, W * .5, H * .7, H * .2, '#020303');
-    figure(ctx, W * .3, H * .8, H * .22, '#020303');
-    for (let i = 0; i < 10; i++) { ctx.fillStyle = 'rgba(90,120,125,.12)'; ctx.fillRect(W * (.05 + i * .1), 0, 2, H); }
-  },
-  'Spice haze': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#3b1d0c'], [.5, '#c46a28'], [1, '#e9b577']]); ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 1600; i++) { const s = r() * r() * 5; ctx.fillStyle = `rgba(255,${150 + r() * 80},${60 + r() * 60},${r() * .35})`; ctx.beginPath(); ctx.arc(r() * W, r() * H, s + .5, 0, 7); ctx.fill(); }
-    ctx.globalCompositeOperation = 'source-over';
-    ridge(ctx, r, W, H, H * .82, H * .04, '#4a2410', '#1a0b04', 'rgba(255,190,120,.4)');
-    figure(ctx, W * rand(.3, .7), H * .8, H * .12, '#120804');
-  },
-  'Fire at Arrakeen': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#1a0a04'], [.6, '#5a1f08'], [1, '#2a0d04']]); ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.filter = 'blur(14px)';
-    for (let i = 0; i < 60; i++) { const x = r() * W, y = H * (.35 + r() * .6), s = H * (.05 + r() * .18); const g = ctx.createRadialGradient(x, y, 0, x, y, s); g.addColorStop(0, 'rgba(255,230,160,.9)'); g.addColorStop(.4, 'rgba(255,120,30,.5)'); g.addColorStop(1, 'rgba(120,20,0,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, s * .6, s, 0, 0, 7); ctx.fill(); }
-    ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
-    for (let x = 0; x < W; x += 8 + r() * 10) { figure(ctx, x, H * .98, H * (.04 + r() * .03), 'rgba(15,6,2,.95)'); }
-    speckle(ctx, r, W, H, 1500, .5);
-  },
-  'Shield wall': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#8c7a66'], [.5, '#c7a784'], [1, '#6e5238']]); ctx.fillRect(0, 0, W, H);
-    blobs(ctx, r, W, H, 20, 26, r => `rgba(${150 + r() * 60},${120 + r() * 40},${90 + r() * 30},.5)`, .5);
-    ctx.fillStyle = '#2b1f16'; ctx.beginPath(); ctx.moveTo(0, H); let y = H * .45; for (let x = 0; x <= W; x += 8) { y = clamp(y + (r() - .5) * 26, H * .3, H * .6); ctx.lineTo(x, y); } ctx.lineTo(W, H); ctx.fill();
-    ridge(ctx, r, W, H, H * .86, H * .025, '#b88f62', '#6a4a2c', 'rgba(255,230,190,.35)');
-  },
+    grainify(base, 14); grainify(ranks, 10);
+    const bx = SW * (.2 + r() * .2);
+    return t => {
+      ctx.drawImage(base, 0, 0);
+      const bw = 12, bh = SH * .3, by = SH * .2;
+      ctx.fillStyle = '#b23c2d'; ctx.beginPath(); ctx.moveTo(bx, by);
+      for (let i = 0; i <= 10; i++) ctx.lineTo(bx + bw + Math.sin(t * 3 + i * .7) * 2, by + bh * i / 10);
+      ctx.lineTo(bx, by + bh); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#6b5a47'; ctx.fillRect(bx - 1.5, by - 6, 2, SH * .45);
+      drawTiled(ctx, ranks, t * 9);
+      ctx.fillStyle = 'rgba(240,230,215,.12)'; ctx.fillRect(0, SH * .55, SW, SH * .1);
+    };
+  } },
+  hull: { orient: 'land', sepia: .9, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW * 1.2, SH * 1.2), BW = SW * 1.2, BH = SH * 1.2;
+    b.fillStyle = grad(b, 0, BH, [[0, '#d9c7ab'], [.5, '#efe3d0'], [1, '#e6d6bd']]); b.fillRect(0, 0, BW, BH);
+    b.fillStyle = '#5b4a3a'; b.beginPath(); b.ellipse(BW * .5, BH * .08, BW * .62, BH * .42, 0, 0, PI); b.fill();
+    b.strokeStyle = 'rgba(30,22,15,.5)'; b.lineWidth = 1;
+    for (let i = -12; i <= 12; i++) { b.beginPath(); b.moveTo(BW * .5 + i * 26, BH * .08); b.quadraticCurveTo(BW * .5 + i * 30, BH * .35, BW * .5 + i * 34, BH * .48); b.stroke(); }
+    for (let j = 1; j < 6; j++) { b.beginPath(); b.ellipse(BW * .5, BH * .08, BW * .62 * (1 - j * .06), BH * .42 * j / 6, 0, 0, PI); b.stroke(); }
+    b.fillStyle = 'rgba(40,30,20,.35)'; b.beginPath(); b.ellipse(BW * .5, BH * .56, BW * .36, BH * .05, 0, 0, 7); b.fill();
+    for (let blk = 0; blk < 9; blk++) {
+      const bx = BW * (.18 + (blk % 3) * .25), byy = BH * (.66 + Math.floor(blk / 3) * .1);
+      for (let i = 0; i < 40; i++) { b.fillStyle = 'rgba(60,40,30,.9)'; b.fillRect(bx + (i % 10) * 7 + Math.floor(blk / 3) * -6, byy + Math.floor(i / 10) * 5, 3, 4); }
+    }
+    grainify(base, 16);
+    return t => { const z = 1 + t * .01; ctx.save(); ctx.translate(SW / 2, SH / 2); ctx.scale(z, z); ctx.drawImage(base, -BW / 2 - t * 2, -BH / 2); ctx.restore(); };
+  } },
+  desert: { orient: 'land', sepia: .45, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [sky, s] = mkCanvas(SW, SH);
+    s.fillStyle = grad(s, 0, SH, [[0, '#dfe6e6'], [.42, '#f1dcb8'], [1, '#c9803c']]); s.fillRect(0, 0, SW, SH);
+    const sx = SW * (.25 + r() * .5); s.globalCompositeOperation = 'lighter'; s.globalAlpha = .7; s.drawImage(GLOW, sx - 80, SH * .12 - 80, 160, 160); s.globalAlpha = 1; s.globalCompositeOperation = 'source-over';
+    const layers = [0, 1, 2, 3].map(i => { const k = i / 3; return tileRidge(r, SW * 2, SH, SH * (.42 + k * .38), SH * (.05 + k * .05), `hsl(28,${62 - k * 8}%,${64 - k * 18}%)`, `hsl(24,65%,${40 - k * 16}%)`, `rgba(255,236,200,${.55 - k * .3})`); });
+    const speeds = [3, 6, 11, 19];
+    const grains = Array.from({ length: 70 }, () => ({ x: r() * SW, y: SH * (.45 + r() * .55), v: 40 + r() * 100, l: 6 + r() * 22, a: .05 + r() * .16 }));
+    return t => {
+      ctx.drawImage(sky, 0, 0);
+      layers.forEach((L, i) => drawTiled(ctx, L, t * speeds[i]));
+      ctx.strokeStyle = '#fff0d8'; ctx.lineWidth = 1;
+      for (const g of grains) { const x = (g.x + t * g.v) % (SW + 40) - 20; ctx.globalAlpha = g.a; ctx.beginPath(); ctx.moveTo(x, g.y); ctx.lineTo(x + g.l, g.y - g.l * .08); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    };
+  } },
+  storm: { orient: 'land', sepia: .6, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW, SH);
+    b.fillStyle = grad(b, 0, SH, [[0, '#3a2c22'], [.5, '#7a5f48'], [1, '#2a1f18']]); b.fillRect(0, 0, SW, SH);
+    b.globalCompositeOperation = 'lighter'; b.drawImage(GLOW, SW * .58 - 170, SH * .45 - 170, 340, 340); b.drawImage(GLOW, SW * .58 - 45, SH * .45 - 45, 90, 90); b.drawImage(GLOW, SW * .58 - 30, SH * .45 - 30, 60, 60); b.globalCompositeOperation = 'source-over';
+    const c1 = cloudLayer(r, SW * 2, SH, 30, r => `rgba(${30 + r() * 20},${24 + r() * 14},${18 + r() * 10},.9)`, 0, 1, 150);
+    const c2 = cloudLayer(r, SW * 2, SH, 24, r => `rgba(${60 + r() * 30},${48 + r() * 20},${36 + r() * 14},.6)`, .1, .9, 110);
+    const sand = Array.from({ length: 90 }, () => ({ x: r() * SW, y: r() * SH, v: 60 + r() * 120, a: .05 + r() * .15 }));
+    return t => {
+      ctx.drawImage(base, 0, 0);
+      ctx.globalAlpha = .85; drawTiled(ctx, c1, t * 14 + 200); ctx.globalAlpha = .7; drawTiled(ctx, c2, t * 26); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#e9cfa9';
+      for (const g of sand) { ctx.globalAlpha = g.a; ctx.fillRect((g.x + t * g.v) % SW, (g.y + t * g.v * .2) % SH, 2, 1); }
+      ctx.globalAlpha = 1;
+    };
+  } },
+  giedi: { orient: 'land', sepia: 0, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW, SH);
+    b.fillStyle = grad(b, 0, SH, [[0, '#0e1618'], [.45, '#3b4c52'], [.52, '#131b1e'], [1, '#050809']]); b.fillRect(0, 0, SW, SH);
+    b.fillStyle = '#080c0d'; b.beginPath(); b.moveTo(SW * .18, SH * .52); b.quadraticCurveTo(SW * .5, SH * .12, SW * .82, SH * .52); b.closePath(); b.fill();
+    b.strokeStyle = 'rgba(130,160,165,.28)'; b.lineWidth = 1.5; for (let i = -8; i <= 8; i++) { b.beginPath(); b.moveTo(SW * .5 + i * 6, SH * .54); b.lineTo(SW * .5 + i * 90, SH); b.stroke(); }
+    grainify(base, 10);
+    const lights = Array.from({ length: 90 }, () => ({ x: SW * (.15 + r() * .7), y: SH * (.42 + r() * .12), p: r() * 10, a: .3 + r() * .7 }));
+    const fog = cloudLayer(r, SW * 2, SH, 26, r => `rgba(${110 + r() * 50},${130 + r() * 40},${140 + r() * 30},.22)`, .25, .75, 120);
+    return t => {
+      const z = 1 + t * .012; ctx.save(); ctx.translate(SW / 2, SH / 2); ctx.scale(z, z); ctx.translate(-SW / 2, -SH / 2);
+      ctx.drawImage(base, 0, 0);
+      const beam = .55 + .45 * n1(t * 2.3);
+      const g = ctx.createLinearGradient(SW * .47, 0, SW * .53, 0); g.addColorStop(0, 'rgba(190,225,235,0)'); g.addColorStop(.5, `rgba(210,238,245,${.5 * beam})`); g.addColorStop(1, 'rgba(190,225,235,0)');
+      ctx.fillStyle = g; ctx.fillRect(SW * .47, 0, SW * .06, SH * .34);
+      ctx.fillStyle = `rgba(235,250,255,${.85 * beam})`; ctx.fillRect(SW * .5 - 1.5, SH * .05, 3, SH * .28);
+      for (const l of lights) { ctx.fillStyle = `rgba(215,238,245,${l.a * (n1(t * 1.5 + l.p) > .35 ? 1 : .2)})`; ctx.fillRect(l.x, l.y, 1.6, 1.6); }
+      ctx.globalAlpha = .9; drawTiled(ctx, fog, t * 9); ctx.globalAlpha = 1;
+      ctx.restore();
+    };
+  } },
+  throne: { orient: 'land', sepia: 0, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW, SH);
+    b.fillStyle = grad(b, 0, SH, [[0, '#18272a'], [.7, '#0d1718'], [1, '#050909']]); b.fillRect(0, 0, SW, SH);
+    b.fillStyle = 'rgba(0,0,0,.35)'; for (let i = 0; i < 9; i++) b.fillRect(SW * (i / 9), 0, 3, SH);
+    b.fillStyle = '#0a1112'; b.fillRect(0, SH * .58, SW, SH * .42);
+    b.fillStyle = '#24383b'; b.fillRect(SW * .36, SH * .55, SW * .28, SH * .07);
+    b.fillStyle = '#1b2b2e'; for (let i = 0; i < 4; i++) b.fillRect(SW * (.3 + i * .12), SH * .6, SW * .06, SH * .12);
+    silhouette(b, SW * .5, SH * .52, SH * .2, '#030606');
+    silhouette(b, SW * .3, SH * .72, SH * .26, '#020404'); silhouette(b, SW * .69, SH * .72, SH * .26, '#020404');
+    grainify(base, 10);
+    const motes = Array.from({ length: 50 }, () => ({ x: SW * (.42 + r() * .16), y: r() * SH * .6, v: 3 + r() * 8, p: r() * 9 }));
+    return t => {
+      const z = 1 + t * .01; ctx.save(); ctx.translate(SW / 2, SH / 2); ctx.scale(z, z); ctx.translate(-SW / 2, -SH / 2);
+      ctx.drawImage(base, 0, 0);
+      const f = .75 + .25 * n1(t * 4);
+      const g = ctx.createLinearGradient(SW * .44, 0, SW * .56, 0); g.addColorStop(0, 'rgba(140,200,205,0)'); g.addColorStop(.5, `rgba(170,225,230,${.32 * f})`); g.addColorStop(1, 'rgba(140,200,205,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(SW * .46, 0); ctx.lineTo(SW * .54, 0); ctx.lineTo(SW * .6, SH * .6); ctx.lineTo(SW * .4, SH * .6); ctx.fill();
+      ctx.fillStyle = 'rgba(200,240,240,.6)';
+      for (const m of motes) { ctx.globalAlpha = .3 + .5 * n1(t + m.p); ctx.fillRect(m.x + Math.sin(t * .5 + m.p) * 6, (m.y + t * m.v) % (SH * .6), 1.4, 1.4); }
+      ctx.globalAlpha = 1; ctx.restore();
+    };
+  } },
+  moons: { orient: 'land', sepia: 0, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW, SH);
+    b.fillStyle = grad(b, 0, SH, [[0, '#04060a'], [.7, '#1a2130'], [1, '#27252a']]); b.fillRect(0, 0, SW, SH);
+    for (let i = 0; i < 600; i++) { b.fillStyle = `rgba(255,255,255,${r() * r()})`; b.fillRect(r() * SW, r() * SH * .75, 1, 1); }
+    const moon = (x, y, rad) => { const g = b.createRadialGradient(x - rad * .3, y - rad * .3, rad * .1, x, y, rad); g.addColorStop(0, '#f4efe4'); g.addColorStop(1, '#8c8578'); b.fillStyle = g; b.beginPath(); b.arc(x, y, rad, 0, 7); b.fill(); b.fillStyle = 'rgba(80,70,60,.25)'; for (let i = 0; i < 12; i++) { b.beginPath(); b.arc(x + (r() - .5) * rad * 1.3, y + (r() - .5) * rad * 1.3, rad * (.05 + r() * .15), 0, 7); b.fill(); } };
+    moon(SW * .62, SH * .32, SH * .19); moon(SW * .32, SH * .42, SH * .07);
+    const clouds = cloudLayer(r, SW * 2, SH, 18, r => `rgba(${30 + r() * 30},${34 + r() * 30},${44 + r() * 30},.75)`, .2, .6, 100);
+    const dunes = [0, 1].map(i => tileRidge(r, SW * 2, SH, SH * (.76 + i * .1), SH * .04, `hsl(220,10%,${14 - i * 5}%)`, '#040405', i === 0 ? 'rgba(220,225,235,.25)' : null));
+    const tw = Array.from({ length: 30 }, () => ({ x: r() * SW, y: r() * SH * .6, p: r() * 20 }));
+    return t => {
+      ctx.drawImage(base, 0, 0);
+      ctx.fillStyle = '#fff'; for (const s of tw) { ctx.globalAlpha = n1(t * 3 + s.p); ctx.fillRect(s.x, s.y, 1.5, 1.5); } ctx.globalAlpha = 1;
+      drawTiled(ctx, clouds, t * 11);
+      dunes.forEach((d, i) => drawTiled(ctx, d, t * (4 + i * 5)));
+    };
+  } },
+  limb: { orient: 'land', sepia: 0, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const R = SH * 1.8, pcx = SW / 2, pcy = SH * 2.12;
+    const [lights, lx] = mkCanvas(R * 2, R * 2);
+    for (let i = 0; i < 2600; i++) {
+      const a = r() * PI * 2, d = R * Math.sqrt(r());
+      const cl = r() < .3 ? 3 + r() * 6 : 1;
+      for (let k = 0; k < cl; k++) { lx.fillStyle = `rgba(${230 + r() * 25},${220 + r() * 30},${180 + r() * 60},${.25 + r() * .75})`; lx.fillRect(R + Math.cos(a) * d + (r() - .5) * 8, R + Math.sin(a) * d + (r() - .5) * 8, 1.3, 1.3); }
+    }
+    const [atm, ax] = mkCanvas(SW, SH);
+    const g = ax.createRadialGradient(pcx, pcy, R * .97, pcx, pcy, R * 1.05); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.35, 'rgba(210,225,240,.9)'); g.addColorStop(.55, 'rgba(160,190,220,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ax.fillStyle = g; ax.fillRect(0, 0, SW, SH);
+    return t => {
+      ctx.fillStyle = '#020304'; ctx.fillRect(0, 0, SW, SH);
+      ctx.save(); ctx.beginPath(); ctx.arc(pcx, pcy, R, 0, 7); ctx.fillStyle = '#05070a'; ctx.fill(); ctx.clip();
+      ctx.translate(pcx, pcy); ctx.rotate(t * .012); ctx.drawImage(lights, -R, -R); ctx.restore();
+      ctx.globalAlpha = .85 + .15 * n1(t); ctx.drawImage(atm, 0, 0); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(SW * .42 + t * 3, SH * .3, 16, 4, 0, 0, 7); ctx.fill();
+    };
+  } },
+  fire: { orient: 'land', sepia: 0, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW, SH);
+    b.fillStyle = grad(b, 0, SH, [[0, '#1c0904'], [.55, '#5c1c06'], [1, '#2a0b03']]); b.fillRect(0, 0, SW, SH);
+    b.fillStyle = '#120603'; for (let x = 0; x < SW; x += 30 + r() * 50) b.fillRect(x, SH * (.25 + r() * .2), 18 + r() * 40, SH);
+    const [fg, f] = mkCanvas(SW, SH);
+    for (let x = -10; x < SW + 10; x += 7 + r() * 9) silhouette(f, x, SH * .99, SH * (.07 + r() * .05), 'rgba(12,4,1,.97)');
+    const flames = Array.from({ length: 28 }, () => ({ x: r() * SW, y: SH * (.45 + r() * .5), s: SH * (.12 + r() * .35), p: r() * 50, v: .8 + r() * 2 }));
+    const embers = Array.from({ length: 80 }, () => ({ x: r() * SW, y: r() * SH, v: 15 + r() * 50, p: r() * 20, s: 2 + r() * 5 }));
+    return t => {
+      ctx.drawImage(base, 0, 0);
+      ctx.globalCompositeOperation = 'lighter';
+      for (const fl of flames) {
+        const k = .55 + .6 * n1(t * fl.v + fl.p), h = fl.s * k, w = fl.s * .55 * (.8 + .4 * n1(t * 2 + fl.p));
+        ctx.globalAlpha = .55; ctx.drawImage(FLAME, fl.x - w / 2, fl.y - h * .85, w, h);
+        ctx.globalAlpha = .35; ctx.drawImage(FLAME, fl.x - w * .9, fl.y - h * .6, w * 1.8, h * 1.1);
+      }
+      for (const e of embers) { const y = ((e.y - t * e.v) % SH + SH) % SH; ctx.globalAlpha = .4 + .6 * n1(t * 4 + e.p); ctx.drawImage(EMBER, e.x + Math.sin(t + e.p) * 8 - e.s / 2, y - e.s / 2, e.s, e.s); }
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(fg, 0, Math.sin(t * 1.3) * 1.2);
+    };
+  } },
+  blast: { orient: 'land', sepia: 0, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW, SH);
+    b.fillStyle = grad(b, 0, SH, [[0, '#0b0907'], [1, '#1c130c']]); b.fillRect(0, 0, SW, SH);
+    b.strokeStyle = 'rgba(90,70,50,.35)'; for (let i = 0; i < 14; i++) { b.beginPath(); b.moveTo(r() * SW, 0); b.lineTo(r() * SW, SH); b.stroke(); }
+    b.fillStyle = '#060504'; b.beginPath(); b.moveTo(0, SH * .75); for (let x = 0; x <= SW; x += 40) b.lineTo(x, SH * (.68 + r() * .1)); b.lineTo(SW, SH); b.lineTo(0, SH); b.fill();
+    const period = 2.6 + r(), ex = SW * (.35 + r() * .3), ey = SH * (.35 + r() * .2);
+    const sparks = Array.from({ length: 50 }, () => ({ a: r() * PI * 2, v: 60 + r() * 220, s: 2 + r() * 3 }));
+    return t => {
+      ctx.drawImage(base, 0, 0);
+      const tau = (t % period) / period * 2.2, fb = 1 - Math.exp(-5 * tau), flash = Math.exp(-3 * tau);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = .9 * flash + .2; ctx.drawImage(FLAME, ex - 260 * fb, ey - 200 * fb, 520 * fb, 400 * fb);
+      ctx.globalAlpha = flash; ctx.drawImage(GLOW, ex - 120 * fb, ey - 120 * fb, 240 * fb, 240 * fb);
+      ctx.globalAlpha = .5 * flash; ctx.fillStyle = '#ffddaa'; ctx.fillRect(0, 0, SW, SH);
+      for (const s of sparks) { ctx.globalAlpha = Math.max(0, 1 - tau * .7); ctx.drawImage(EMBER, ex + Math.cos(s.a) * s.v * tau - s.s, ey + Math.sin(s.a) * s.v * tau + 40 * tau * tau - s.s, s.s * 2, s.s * 2); }
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    };
+  } },
+  spice: { orient: 'land', sepia: .6, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [base, b] = mkCanvas(SW, SH);
+    b.fillStyle = grad(b, 0, SH, [[0, '#3b1d0c'], [.5, '#c46a28'], [1, '#e9b577']]); b.fillRect(0, 0, SW, SH);
+    const dune = tileRidge(r, SW * 2, SH, SH * .82, SH * .04, '#4a2410', '#1a0b04', 'rgba(255,190,120,.4)');
+    const sheets = [0, 1].map(() => { const [s, x] = mkCanvas(SW * 2, SH); x.globalCompositeOperation = 'lighter'; for (let i = 0; i < 500; i++) { const z = r() * r() * 5 + .5; x.fillStyle = `rgba(255,${150 + r() * 80},${60 + r() * 60},${r() * .35})`; x.beginPath(); x.arc(r() * SW * 2, r() * SH, z, 0, 7); x.fill(); } return s; });
+    return t => {
+      ctx.drawImage(base, 0, 0);
+      ctx.globalCompositeOperation = 'lighter'; drawTiled(ctx, sheets[0], t * 6, Math.sin(t * .3) * 4); drawTiled(ctx, sheets[1], t * 15, -t * 2 % SH); ctx.globalCompositeOperation = 'source-over';
+      drawTiled(ctx, dune, t * 5);
+      silhouette(ctx, SW * .3 + t * 4, SH * .8, SH * .12, '#120804');
+    };
+  } },
+  maw: { orient: 'land', sepia: .4, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const R = SH * .9;
+    const rings = [0, 1, 2].map(k => {
+      const [rc, x] = mkCanvas(R * 2, R * 2);
+      for (let ring = 5 * k + 4; ring >= 5 * k; ring--) {
+        const rr = 18 + ring * 22, n = 18 + ring * 7;
+        x.fillStyle = `hsl(28,${20 + ring * 2}%,${12 + ring * 3.5}%)`; x.beginPath(); x.arc(R, R, rr + 14, 0, 7); x.arc(R, R, Math.max(0, rr - 10), 0, 7, true); x.fill();
+        x.fillStyle = `hsl(40,25%,${52 + ring * 2}%)`;
+        for (let i = 0; i < n; i++) { const a = i / n * PI * 2, px = R + Math.cos(a) * rr, py = R + Math.sin(a) * rr, w = 3.5 + ring * .35; x.beginPath(); x.moveTo(px + Math.cos(a + 1.57) * w, py + Math.sin(a + 1.57) * w); x.lineTo(px - Math.cos(a + 1.57) * w, py - Math.sin(a + 1.57) * w); x.lineTo(R + Math.cos(a) * (rr - 12 - ring * .6), R + Math.sin(a) * (rr - 12 - ring * .6)); x.fill(); }
+      }
+      return rc;
+    });
+    const fall = Array.from({ length: 120 }, () => ({ a: r() * PI * 2, d: r(), v: .08 + r() * .15 }));
+    return t => {
+      ctx.fillStyle = '#b58656'; ctx.fillRect(0, 0, SW, SH);
+      const z = 1 + t * .015; ctx.save(); ctx.translate(SW / 2, SH / 2); ctx.scale(z, z);
+      for (let k = 2; k >= 0; k--) { ctx.save(); ctx.rotate(t * (.03 + k * .025) * (k % 2 ? -1 : 1)); ctx.drawImage(rings[k], -R, -R); ctx.restore(); }
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 60); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(-60, -60, 120, 120);
+      ctx.fillStyle = 'rgba(235,200,150,.7)';
+      for (const p of fall) { const d = 1 - ((p.d + t * p.v) % 1); ctx.fillRect(Math.cos(p.a) * d * R, Math.sin(p.a) * d * R, 1.5, 1.5); }
+      ctx.restore();
+    };
+  } },
+  thopter: { orient: 'land', sepia: .45, make(r, out) {
+    const [c, ctx] = out(SW, SH);
+    const [sky, s] = mkCanvas(SW, SH); s.fillStyle = grad(s, 0, SH, [[0, '#cfd6d8'], [.55, '#ecd6b0'], [1, '#b87a3e']]); s.fillRect(0, 0, SW, SH);
+    const dunes = [0, 1, 2].map(i => tileRidge(r, SW * 2, SH, SH * (.6 + i * .13), SH * .05, `hsl(30,55%,${62 - i * 14}%)`, `hsl(26,60%,${38 - i * 10}%)`, 'rgba(255,240,210,.35)'));
+    const y0 = SH * (.3 + r() * .1), v = 38 + r() * 20, x0 = -60 - r() * 120;
+    return t => {
+      ctx.drawImage(sky, 0, 0);
+      dunes.forEach((d, i) => drawTiled(ctx, d, t * (4 + i * 7)));
+      const x = x0 + t * v, y = y0 + Math.sin(t * 1.4) * 4;
+      ctx.fillStyle = 'rgba(40,30,22,.35)'; ctx.beginPath(); ctx.ellipse(x + 20, SH * .86, 40, 5, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#231a14'; ctx.beginPath(); ctx.ellipse(x, y, 34, 7, 0, 0, 7); ctx.fill(); ctx.fillRect(x - 46, y - 2, 16, 3);
+      const flap = Math.abs(Math.sin(t * 40));
+      ctx.fillStyle = `rgba(40,32,26,${.25 + .35 * flap})`; ctx.beginPath(); ctx.ellipse(x - 4, y - 8 - 10 * flap, 44, 4 + 6 * flap, 0, 0, 7); ctx.fill();
+    };
+  } },
+  figure: { orient: 'port', sepia: 0, make(r, out) {
+    const [c, ctx] = out(PW, PH);
+    const [fig, f] = mkCanvas(PW, PH);
+    const body = f.createRadialGradient(PW * .45, PH * .3, 10, PW * .5, PH * .55, PH * .6); body.addColorStop(0, '#2b3430'); body.addColorStop(.35, '#141a17'); body.addColorStop(1, '#050706');
+    const head = f.createRadialGradient(PW * .47, PH * .17, 2, PW * .5, PH * .19, PW * .1); head.addColorStop(0, '#8d7a6c'); head.addColorStop(.6, '#3a302a'); head.addColorStop(1, '#0c0a09');
+    f.fillStyle = head; f.beginPath(); f.ellipse(PW * .5, PH * .19, PW * .09, PH * .055, 0, 0, 7); f.fill(); f.fillStyle = body;
+    f.beginPath(); f.moveTo(PW * .24, PH * .27); f.quadraticCurveTo(PW * .08, PH * .65, PW * .22, PH); f.lineTo(PW * .78, PH); f.quadraticCurveTo(PW * .92, PH * .65, PW * .76, PH * .27); f.closePath(); f.fill();
+    f.strokeStyle = 'rgba(170,200,180,.4)'; f.lineWidth = 2.5; f.beginPath(); f.moveTo(PW * .25, PH * .28); f.quadraticCurveTo(PW * .09, PH * .65, PW * .23, PH); f.stroke();
+    f.strokeStyle = 'rgba(210,190,170,.45)'; f.beginPath(); f.arc(PW * .5, PH * .19, PW * .09, -2.6, -.6); f.stroke();
+    f.fillStyle = 'rgba(160,190,170,.1)'; for (let i = 0; i < 8; i++) f.fillRect(PW * .34, PH * (.34 + i * .06), PW * .32, 2);
+    grainify(fig, 12);
+    const motes = Array.from({ length: 30 }, () => ({ x: PW * (.3 + r() * .4), y: r() * PH, v: 2 + r() * 6, p: r() * 9 }));
+    return t => {
+      ctx.fillStyle = grad(ctx, 0, PH, [[0, '#0f1613'], [1, '#040605']]); ctx.fillRect(0, 0, PW, PH);
+      const f2 = .8 + .2 * n1(t * 3);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .35 * f2; ctx.drawImage(GLOW, PW * .1, -PH * .15, PW * .8, PH * .7); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      const br = 1 + .006 * Math.sin(t * 1.6); ctx.save(); ctx.translate(PW / 2, PH); ctx.scale(1, br); ctx.drawImage(fig, -PW / 2, -PH); ctx.restore();
+      ctx.fillStyle = 'rgba(200,230,210,.5)'; for (const m of motes) { ctx.globalAlpha = .3 + .5 * n1(t + m.p); ctx.fillRect(m.x, (m.y - t * m.v + PH) % PH, 1.3, 1.3); } ctx.globalAlpha = 1;
+    };
+  } },
+  concept: { orient: 'port', sepia: 0, still: true, make(r, out) {
+    const [c, ctx] = out(PW, PH);
+    ctx.fillStyle = grad(ctx, 0, PH, [[0, '#c3bdb2'], [1, '#a9a297']]); ctx.fillRect(0, 0, PW, PH);
+    ctx.fillStyle = 'rgba(0,0,0,.1)'; ctx.beginPath(); ctx.ellipse(PW * .5, PH * .93, PW * .4, PH * .025, 0, 0, 7); ctx.fill();
+    const views = r() < .5 ? [.3, .7] : [.5];
+    for (const vx of views) {
+      const w = views.length > 1 ? .2 : .28;
+      ctx.fillStyle = '#1c1c1b'; ctx.beginPath(); ctx.ellipse(PW * vx, PH * .15, PW * w * .32, PH * .05, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(PW * (vx - w * .8), PH * .21); ctx.lineTo(PW * (vx + w * .8), PH * .21); ctx.lineTo(PW * (vx + w), PH * .58); ctx.lineTo(PW * (vx + w * .7), PH * .92); ctx.lineTo(PW * (vx - w * .7), PH * .92); ctx.lineTo(PW * (vx - w), PH * .58); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1.5; for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.moveTo(PW * (vx - w * .7), PH * (.25 + i * .05)); ctx.lineTo(PW * (vx + w * .7), PH * (.25 + i * .05)); ctx.stroke(); }
+      ctx.strokeStyle = '#6a2a22'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(PW * (vx - w * 1.1), PH * .7); ctx.lineTo(PW * (vx + w * 1.1), PH * .58); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(40,40,40,.5)'; ctx.font = '9px sans-serif'; ctx.fillText('SARDAUKAR — FRONT / BACK', 12, 18);
+    grainify(c, 12);
+    return () => {};
+  } },
+  specimen: { orient: 'cut', sepia: 0, make(r, out) {
+    /* an engraved specimen plate on transparent ground, like the frameless shot at 0:21 */
+    const CW = 700, CH = 300;
+    const [c, ctx] = out(CW, CH);
+    const [art, a] = mkCanvas(CW, CH);
+    const spine = x => CH * .5 - Math.sin((x / CW) * PI) * CH * .07 + (x / CW) * CH * .06;
+    const env = x => { const u = x / CW; return (u < .2 ? Math.sin(u / .2 * PI / 2) * .9 + .1 : Math.pow(Math.cos((u - .2) / .8 * PI / 2), .8)) * CH * .24 + 3; };
+    const outline = () => { a.beginPath(); for (let x = 30; x <= CW - 70; x += 4) a.lineTo(x, spine(x) - env(x)); for (let x = CW - 70; x >= 30; x -= 4) a.lineTo(x, spine(x) + env(x) * .85); a.closePath(); };
+    const g = a.createLinearGradient(0, CH * .2, 0, CH * .8); g.addColorStop(0, '#f2eee6'); g.addColorStop(.5, '#bdb7ad'); g.addColorStop(1, '#7c776f');
+    outline(); a.fillStyle = g; a.fill();
+    a.save(); outline(); a.clip();
+    a.strokeStyle = 'rgba(40,36,32,.55)'; a.lineWidth = 1;
+    for (let x = 30; x < CW - 60; x += 3.2) { a.beginPath(); a.moveTo(x, spine(x) - env(x)); a.lineTo(x + 6, spine(x) + env(x)); a.stroke(); }
+    a.strokeStyle = 'rgba(30,26,22,.75)'; a.lineWidth = 2.2;
+    for (let x = 150; x < CW - 100; x += 12) { const s0 = spine(x), e = env(x); a.beginPath(); a.moveTo(x, s0); a.quadraticCurveTo(x - 10, s0 - e * .7, x + 3, s0 - e * .95); a.stroke(); a.beginPath(); a.moveTo(x, s0); a.quadraticCurveTo(x - 8, s0 + e * .6, x + 2, s0 + e * .8); a.stroke(); }
+    a.lineWidth = 4; a.beginPath(); for (let x = 60; x <= CW - 70; x += 4) a.lineTo(x, spine(x)); a.stroke();
+    a.fillStyle = 'rgba(20,18,16,.8)'; a.beginPath(); a.ellipse(170, spine(170) - 6, 26, 32, -.2, 0, 7); a.fill();
+    a.lineWidth = 1.4; for (let i = 0; i < 22; i++) { const x = 34 + i * 5; a.beginPath(); a.moveTo(x, spine(x) + 4); a.lineTo(x + 2, spine(x) + 16); a.stroke(); }
+    a.restore();
+    a.strokeStyle = 'rgba(245,240,230,.9)'; a.lineWidth = 1.6; outline(); a.stroke();
+    const tx = CW - 70, ty = spine(tx);
+    a.fillStyle = '#e9e4da'; a.beginPath(); a.moveTo(tx - 6, ty); a.quadraticCurveTo(tx + 40, ty - 80, tx + 60, ty - 95); a.quadraticCurveTo(tx + 38, ty - 40, tx + 62, ty + 10); a.quadraticCurveTo(tx + 30, ty + 6, tx - 6, ty + 6); a.fill();
+    grainify(art, 18);
+    const halo = soft(CW, CH, 5, x => { x.globalAlpha = .9; x.drawImage(art, 0, 0); });
+    return t => {
+      ctx.clearRect(0, 0, CW, CH);
+      ctx.save(); ctx.translate(CW / 2, CH / 2 + Math.sin(t * .8) * 3); ctx.rotate(Math.sin(t * .5) * .01);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .45; ctx.drawImage(halo, -CW / 2, -CH / 2);
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.drawImage(art, -CW / 2, -CH / 2);
+      ctx.restore();
+    };
+  } },
 };
-const PORTRAIT_GEN = {
-  'Baron’s guard': (ctx, r, W, H) => {
-    ctx.fillStyle = grad(ctx, 0, H, [[0, '#0d1311'], [1, '#050706']]); ctx.fillRect(0, 0, W, H);
-    const g = ctx.createRadialGradient(W * .5, H * .3, 0, W * .5, H * .35, H * .5); g.addColorStop(0, 'rgba(120,150,130,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#060807'; ctx.beginPath(); ctx.ellipse(W * .5, H * .2, W * .1, H * .065, 0, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(W * .22, H * .3); ctx.quadraticCurveTo(W * .1, H * .7, W * .25, H); ctx.lineTo(W * .75, H); ctx.quadraticCurveTo(W * .9, H * .7, W * .78, H * .3); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(160,190,170,.35)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W * .23, H * .31); ctx.quadraticCurveTo(W * .11, H * .7, W * .26, H); ctx.stroke();
-    ctx.fillStyle = 'rgba(170,200,180,.18)'; for (let i = 0; i < 7; i++) ctx.fillRect(W * .35, H * (.35 + i * .06), W * .3, 3);
-  },
-  'Sardaukar concept': (ctx, r, W, H) => {
-    ctx.fillStyle = '#b9b2a6'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(0,0,0,.08)'; ctx.beginPath(); ctx.ellipse(W * .5, H * .93, W * .35, H * .03, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = '#1d1d1c'; ctx.beginPath(); ctx.ellipse(W * .5, H * .15, W * .09, H * .055, 0, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(W * .3, H * .22); ctx.lineTo(W * .7, H * .22); ctx.lineTo(W * .78, H * .6); ctx.lineTo(W * .68, H * .92); ctx.lineTo(W * .32, H * .92); ctx.lineTo(W * .22, H * .6); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#6a2a22'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(W * .15, H * .7); ctx.lineTo(W * .85, H * .55); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2; for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.moveTo(W * .3, H * (.26 + i * .05)); ctx.lineTo(W * .7, H * (.26 + i * .05)); ctx.stroke(); }
-  },
-};
+const SCENE_NAMES = { land: Object.keys(SCENES).filter(k => SCENES[k].orient === 'land'), port: ['figure', 'concept'], cut: ['specimen'] };
+const SCENE_LABEL = { legion: 'Legion on parade', hull: 'Frigate underside', desert: 'Deep desert', storm: 'Sun through dust', giedi: 'Giedi Prime', throne: 'Throne chamber', moons: 'Twin moons', limb: 'Planet limb', fire: 'Arrakeen burning', blast: 'Explosion', spice: 'Spice haze', maw: 'Sandworm maw', thopter: 'Ornithopter', figure: 'Harkonnen figure', concept: 'Concept art', specimen: 'Specimen plate' };
 
-let plateSeed = (Math.random() * 1e9) | 0;
-function genPlate(portrait) {
-  const table = portrait ? PORTRAIT_GEN : GEN;
-  const names = Object.keys(table);
-  const name = pick(names);
-  const W = portrait ? 700 : 1400, H = portrait ? 1100 : 820;
-  const [c, ctx] = mkCanvas(W, H);
-  table[name](ctx, rng(++plateSeed * 2654435761), W, H);
-  return { src: c, name };
+/* ================================================================== */
+/* Clips: built-in scenes, user videos, stills                          */
+/* ================================================================== */
+let seedCounter = (Math.random() * 1e9) | 0;
+class ProcClip {
+  constructor(scene) {
+    const sc = SCENES[scene];
+    let canvas = null;
+    const out = (w, h) => { const made = mkCanvas(w, h); canvas = made[0]; return made; };
+    this.kind = 'proc'; this.scene = scene; this.name = SCENE_LABEL[scene];
+    this.draw = sc.make(rng(++seedCounter * 2654435761), out);
+    this.src = canvas; this.w = canvas.width; this.h = canvas.height;
+    this.dynamic = !sc.still; this.still = !!sc.still; this.alpha = sc.orient === 'cut'; this.sepiaBias = sc.sepia;
+    this.t0 = rand(0, 5); this.age = 0; this.lastFrame = -1; this.dirty = true;
+    this.draw(this.t0);
+  }
+  update(dt) {
+    this.age += dt;
+    if (!this.dynamic) return;
+    const f = Math.floor(this.age * FPS);           /* film cadence: redraw at 23.976 fps */
+    if (f !== this.lastFrame) { this.lastFrame = f; this.draw(this.t0 + this.age); this.dirty = true; }
+  }
+  setPaused() {}
+  dispose() {}
+}
+class ImageClip {
+  constructor(img, name) { this.kind = 'image'; this.src = img; this.w = img.naturalWidth || img.width; this.h = img.naturalHeight || img.height; this.name = name; this.dynamic = false; this.still = true; this.alpha = false; this.sepiaBias = .45; this.age = 0; this.dirty = true; }
+  update(dt) { this.age += dt; }
+  setPaused() {}
+  dispose() {}
+}
+function waitEvent(el, ev, ms) {
+  return new Promise((res, rej) => {
+    const done = ok => { clearTimeout(tm); el.removeEventListener(ev, onEv); el.removeEventListener('error', onErr); ok ? res() : rej(new Error(ev === 'seeked' ? 'seek timed out' : 'could not load')); };
+    const onEv = () => done(true), onErr = () => done(false);
+    const tm = setTimeout(() => done(false), ms);
+    el.addEventListener(ev, onEv); el.addEventListener('error', onErr);
+  });
+}
+class VideoClip {
+  static async create(m) {
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = m.url;
+    await waitEvent(v, 'loadedmetadata', 6000);
+    const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 8;
+    const seg = Math.min(8, dur), start = Math.max(0, rand(0, dur - seg));
+    v.currentTime = start + .01;
+    await waitEvent(v, 'seeked', 5000).catch(() => {});
+    await v.play().catch(() => {});
+    return new VideoClip(v, m, start, seg);
+  }
+  constructor(v, m, start, seg) { this.kind = 'video'; this.el = v; this.src = v; this.name = m.name; this.start = start; this.seg = seg; this.dynamic = true; this.still = false; this.alpha = false; this.sepiaBias = .45; this.age = 0; this.lastFrame = -1; this.dirty = true; }
+  get w() { return this.el.videoWidth || 16; }
+  get h() { return this.el.videoHeight || 9; }
+  update(dt) {
+    this.age += dt;
+    const v = this.el;
+    if (v.ended || v.currentTime >= this.start + this.seg - .05) { v.currentTime = this.start; v.play().catch(() => {}); }
+    const f = Math.floor(this.age * FPS);
+    if (f !== this.lastFrame && v.readyState >= 2) { this.lastFrame = f; this.dirty = true; }
+  }
+  setPaused(p) { if (p) this.el.pause(); else this.el.play().catch(() => {}); }
+  dispose() { this.el.pause(); this.el.removeAttribute('src'); this.el.load(); }
 }
 
-/* ------------------------------------------------------------------ */
-/* Image treatment: soft filmbook look, optional sepia                 */
-/* ------------------------------------------------------------------ */
-const MAXDIM = 1400;
-function treat(img, sepia) {
-  const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
-  const k = Math.min(1, MAXDIM / Math.max(w0, h0));
-  const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
-  const [c, ctx] = mkCanvas(w, h);
-  ctx.drawImage(img, 0, 0, w, h);
-  let data; try { data = ctx.getImageData(0, 0, w, h); } catch (e) { return c; } /* tainted cross-origin image: keep it untreated */
-  const d = data.data;
-  for (let i = 0; i < d.length; i += 4) {
-    let r = d[i], g = d[i + 1], b = d[i + 2];
-    if (sepia) {
-      const l = .299 * r + .587 * g + .114 * b;
-      r = l * 1.07 + 18; g = l * .93 + 10; b = l * .76 + 2;
-    }
-    /* lifted blacks, softened highlights: matches the slightly milky projection in the video */
-    d[i] = 10 + r * .93; d[i + 1] = 9 + g * .93; d[i + 2] = 9 + b * .92;
+const media = [];
+let lastMedia = -1, picsumFailed = false;
+const recentScenes = [];
+function loadImage(url, cors) { return new Promise((res, rej) => { const im = new Image(); if (cors) im.crossOrigin = 'anonymous'; im.onload = () => res(im); im.onerror = () => rej(new Error('image failed')); im.src = url; }); }
+function pickScene(orient, hint) {
+  if (hint && SCENES[hint]) return hint;
+  const all = SCENE_NAMES[orient], pool = all.filter(s => !recentScenes.includes(s));
+  const s = pick(pool.length ? pool : all);
+  recentScenes.push(s); if (recentScenes.length > 5) recentScenes.shift();
+  return s;
+}
+async function makeClip(orient, hint) {
+  const mode = orient === 'cut' ? 'gen' : $('source').value;
+  if (mode === 'mine' && media.length) {
+    let i = (Math.random() * media.length) | 0;
+    if (media.length > 1 && i === lastMedia) i = (i + 1) % media.length;
+    lastMedia = i;
+    const m = media[i];
+    if (m.kind === 'image') return new ImageClip(m.img, m.name);
+    try { return await VideoClip.create(m); }
+    catch (e) { statusEl.textContent = `${m.name} would not play in this viewer (${e.message}). A built-in clip took its place.`; }
   }
-  ctx.putImageData(data, 0, 0);
+  if (mode === 'picsum' && !picsumFailed && orient !== 'cut') {
+    try {
+      const seed = Math.random().toString(36).slice(2, 9), [w, h] = orient === 'port' ? [700, 1000] : [1400, 800];
+      const im = await Promise.race([loadImage(`https://picsum.photos/seed/${seed}/${w}/${h}`, true), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 7000))]);
+      return new ImageClip(im, 'photo ' + seed);
+    } catch (e) {
+      picsumFailed = true;
+      statusEl.textContent = 'picsum.photos did not load here, probably because this viewer blocks outside images. Built-in clips are playing instead.';
+    }
+  }
+  return new ProcClip(pickScene(orient, hint));
+}
+
+/* ================================================================== */
+/* Glyph script for the red tags (drawn, not a font)                   */
+/* ================================================================== */
+const GLYPHS = [
+  [.78, [['a', .39, .46, .27, .46, PI, 2 * PI], ['s', .12, .46, 1], ['s', .66, .46, 1]]],
+  [.78, [['s', .12, 0, .54], ['s', .66, 0, .54], ['a', .39, .54, .27, .46, 0, PI]]],
+  [.66, [['h', 0, .04, .62], ['d', .6, .02, .06, .98], ['h', 1, .04, .62]]],
+  [.72, [['d', .04, 1, .36, 0], ['d', .36, 0, .68, 1], ['h', .64, .17, .55]]],
+  [.72, [['s', .1, 0, 1], ['s', .62, 0, 1], ['h', .5, .1, .62]]],
+  [.8, [['s', .4, .3, 1], ['a', .4, .06, .3, .3, 0, PI]]],
+  [.66, [['h', 0, .05, .62], ['d', .06, 0, .38, .5], ['d', .38, .5, .06, 1], ['h', 1, .05, .62]]],
+  [.62, [['s', .52, 0, 1], ['h', 0, .06, .52], ['h', .5, .16, .52], ['h', 1, .06, .52]]],
+  [.62, [['s', .12, 0, 1], ['a', .12, .27, .4, .27, -PI / 2, PI / 2]]],
+  [.58, [['s', .12, 0, 1], ['h', 1, .12, .54]]],
+  [.58, [['s', .12, 0, 1], ['h', 0, .12, .54], ['s', .54, 0, .2]]],
+  [.78, [['s', .39, 0, 1], ['a', .39, .5, .32, .26, 0, 2 * PI]]],
+  [.56, [['s', .28, 0, 1], ['h', .3, .04, .52], ['h', .64, .04, .52]]],
+  [.66, [['s', .16, 0, 1], ['a', .16, .27, .38, .27, -PI / 2, PI / 2], ['h', .74, 0, .36]]],
+  [.66, [['a', .33, .36, .27, .34, 0, 2 * PI], ['s', .33, .7, 1]]],
+  [.68, [['d', .05, 0, .63, 1], ['d', .63, 0, .05, 1]]],
+  [.72, [['d', .04, 1, .36, 0], ['d', .36, 0, .68, 1], ['h', 1, .04, .68]]],
+  [.72, [['s', .1, 0, 1], ['s', .62, 0, 1], ['d', .1, 0, .62, 1]]],
+  [.68, [['s', .1, 0, 1], ['d', .12, .56, .6, 0], ['d', .3, .42, .64, 1]]],
+  [.72, [['a', .36, .5, .28, .5, 0, 2 * PI]]],
+  [.88, [['s', .1, 0, 1], ['s', .78, 0, 1], ['d', .1, 0, .44, .62], ['d', .44, .62, .78, 0]]],
+  [.66, [['h', 0, .04, .62], ['s', .33, 0, 1]]],
+  [.72, [['s', .36, 0, 1], ['d', .04, .24, .36, 0], ['d', .36, 0, .68, .24]]],
+  [.62, [['s', .12, 0, 1], ['h', 0, .12, .54], ['h', .5, .12, .44], ['h', 1, .12, .54]]],
+];
+const glyphWord = n => Array.from({ length: n }, () => (Math.random() * GLYPHS.length) | 0);
+const GAP = .26;
+const wordWidth = (w, em) => w.reduce((s, g) => s + GLYPHS[g][0] * em, 0) + (w.length - 1) * em * GAP;
+const lineWidthOf = (words, em) => words.reduce((s, w) => s + wordWidth(w, em), 0) + Math.max(0, words.length - 1) * em * .55;
+function drawGlyph(ctx, g, x, y, em) {
+  const [w, prims] = GLYPHS[g];
+  for (const p of prims) {
+    ctx.beginPath();
+    if (p[0] === 's') {
+      ctx.lineWidth = em * .2; ctx.moveTo(x + p[1] * em, y + p[2] * em); ctx.lineTo(x + p[1] * em, y + p[3] * em); ctx.stroke();
+      ctx.lineWidth = em * .07;
+      if (p[2] === 0) { ctx.beginPath(); ctx.moveTo(x + (p[1] - .13) * em, y + .03 * em); ctx.lineTo(x + (p[1] + .13) * em, y + .03 * em); ctx.stroke(); }
+      if (p[3] === 1) { ctx.beginPath(); ctx.moveTo(x + (p[1] - .13) * em, y + .97 * em); ctx.lineTo(x + (p[1] + .13) * em, y + .97 * em); ctx.stroke(); }
+    } else if (p[0] === 'h') { ctx.lineWidth = em * .09; ctx.moveTo(x + p[2] * em, y + p[1] * em); ctx.lineTo(x + p[3] * em, y + p[1] * em); ctx.stroke(); }
+    else if (p[0] === 'd') { ctx.lineWidth = em * .14; ctx.moveTo(x + p[1] * em, y + p[2] * em); ctx.lineTo(x + p[3] * em, y + p[4] * em); ctx.stroke(); }
+    else { ctx.lineWidth = em * .13; ctx.ellipse(x + p[1] * em, y + p[2] * em, p[3] * em, p[4] * em, 0, p[5], p[6]); ctx.stroke(); }
+  }
+  return w * em;
+}
+function drawQuote(ctx, x, y, em) { ctx.lineWidth = em * .08; for (const dx of [0, .17]) { ctx.beginPath(); ctx.moveTo(x + (dx + .1) * em, y); ctx.lineTo(x + dx * em, y + .24 * em); ctx.stroke(); } }
+function drawLine(ctx, words, x, y, em, quoted) {
+  let cx = x;
+  if (quoted) { drawQuote(ctx, cx, y, em); cx += em * .42; }
+  words.forEach((w, i) => { w.forEach((g, j) => { cx += drawGlyph(ctx, g, cx, y, em) + (j < w.length - 1 ? em * GAP : 0); }); if (i < words.length - 1) cx += em * .55; });
+  if (quoted) { cx += em * .1; drawQuote(ctx, cx, y, em); }
+}
+function makeTag(kind, pos, opts = {}) {
+  /* measured: title tags ~60 px tall with wide glyph spacing; paragraph tags 480-650 px wide, 23.5 px lines */
+  const SS = 2, title = kind === 'title';
+  const em = title ? 25 : 15, lh = 23.5;
+  let lines;
+  if (title) lines = [(opts.words || [5 + (Math.random() * 6 | 0)]).map(n => glyphWord(n))];
+  else {
+    lines = [[glyphWord(3 + (Math.random() * 2 | 0)), glyphWord(4 + (Math.random() * 3 | 0))]];
+    const short = !!opts.short, target = short ? rand(300, 340) : rand(480, 630), n = short ? 1 : 1 + (Math.random() * 4 | 0);
+    for (let i = 0; i < n; i++) {
+      const L = [], goal = target * (i === n - 1 && n > 1 ? rand(.45, .9) : 1) - em * 2.5;
+      while (lineWidthOf(L, em) < goal) L.push(glyphWord(2 + (Math.random() * 7 | 0)));
+      lines.push(L);
+    }
+  }
+  const widths = lines.map((L, i) => lineWidthOf(L, em) + (!title && i === 0 ? em * .84 : 0));
+  const tw = Math.max(...widths);
+  const w = Math.round(title ? tw + 76 : tw + 26), h = Math.round(title ? 60 : 14 + (lines.length - 1) * lh + em + 12);
+  const [c, x] = mkCanvas(w * SS, h * SS); x.scale(SS, SS);
+  x.fillStyle = 'rgba(158,54,46,.93)'; x.fillRect(0, 0, w, h);
+  x.fillStyle = 'rgba(255,255,255,.05)'; x.fillRect(0, 0, w, 1);
+  x.fillStyle = 'rgba(0,0,0,.2)'; x.fillRect(0, h - 1.5, w, 1.5);
+  x.lineCap = 'butt';
+  const paint = (dx, dy, col) => {
+    x.strokeStyle = col;
+    lines.forEach((L, i) => drawLine(x, L, (title ? (w - widths[0]) / 2 : 13) + dx, (title ? (h - em) / 2 : 14 + i * lh) + dy, em, !title && i === 0));
+  };
+  paint(em * .08, em * .11, 'rgba(58,8,5,.85)');    /* embossed: dark red shadow down-right, light bevel up-left */
+  paint(-em * .03, -em * .04, 'rgba(255,238,228,.55)');
+  paint(0, 0, '#e9bfae');
+  return { canvas: c, w, h, kind, pos, tex: null, card: null };
+}
+function buildTags(spec) {
+  if (!spec || $('tags').value === 'off') return [];
+  if (spec === 'cutout') return [makeTag('title', 'cutTitle', { words: [6 + (Math.random() * 3 | 0), 5 + (Math.random() * 3 | 0)] }), makeTag('para', 'cutPara')];
+  return [makeTag(spec[1], spec[0], { short: spec[0] === 'bottomleft' })];
+}
+
+/* ================================================================== */
+/* Background plate: static smoke, fixed flares (as measured)          */
+/* ================================================================== */
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function makeSmoke() {
+  const W = 640, H = 360, [c, x] = mkCanvas(W, H), id = x.createImageData(W, H), d = id.data;
+  const r = rng(90210), P = Float32Array.from({ length: 4096 }, () => r());
+  const h = (i, j) => P[(i & 63) + ((j & 63) << 6)];
+  const vn = (px, py) => { const i = Math.floor(px), j = Math.floor(py), fx = px - i, fy = py - j, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy); return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - v) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * v; };
+  const fbm = (px, py) => { let v = 0, a = .5; for (let o = 0; o < 6; o++) { v += a * vn(px, py); const nx = (.8 * px - .6 * py) * 2.07 + 5.3, ny = (.6 * px + .8 * py) * 2.07 + 1.9; px = nx; py = ny; a *= .5; } return v; };
+  for (let y = 0; y < H; y++) for (let X = 0; X < W; X++) {
+    const u = X / W, v = y / H;
+    const wx = fbm(u * 4 + 3.1, v * 4 + 1.7), wy = fbm(u * 4 + 8.3, v * 4 + 2.9);
+    const f = fbm(u * 3.2 + wx * 1.5, v * 7 + wy * 1.1);
+    const bottom = sstep(.72, 1.0, v + (f - .5) * .25);
+    const bank = bottom * (.18 + .82 * sstep(.15, 1.0, u));
+    const right = sstep(.78, 1.02, u + (f - .5) * .25) * sstep(.1, .85, v) * .55;
+    const m = clamp(bank + right + .05, 0, 1.2);
+    const dens = clamp((f - .3) * 1.8, 0, 1);
+    const L = 255 * dens * m * .38;
+    const i = (y * W + X) * 4; d[i] = L; d[i + 1] = L; d[i + 2] = L * 1.05; d[i + 3] = 255;
+  }
+  x.putImageData(id, 0, 0); return c;
+}
+function makeFlares() {
+  const W = 960, H = 540, [c, x] = mkCanvas(W, H);
+  x.fillStyle = '#000'; x.fillRect(0, 0, W, H); x.globalCompositeOperation = 'lighter';
+  const flare = (fx, fy, core, halo, spill) => {
+    let g = x.createRadialGradient(fx, fy, 0, fx, fy, halo); g.addColorStop(0, 'rgba(200,215,245,.55)'); g.addColorStop(.25, 'rgba(160,175,215,.16)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(fx - halo, fy - halo, halo * 2, halo * 2);
+    g = x.createRadialGradient(fx - core * 1.6, fy + core * .4, 0, fx - core * 1.6, fy + core * .4, core * 3.2); g.addColorStop(0, 'rgba(255,170,90,.45)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(fx - core * 6, fy - core * 4, core * 9, core * 9);
+    g = x.createRadialGradient(fx, fy, 0, fx, fy, core * 1.6); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.45, 'rgba(225,238,255,.8)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(fx - core * 2, fy - core * 2, core * 4, core * 4);
+    for (let k = 0; k < 6; k++) {
+      const a = k / 6 * PI + .2, L = core * (k % 2 ? 5 : 8);
+      const lg = x.createLinearGradient(fx - Math.cos(a) * L, fy - Math.sin(a) * L, fx + Math.cos(a) * L, fy + Math.sin(a) * L);
+      lg.addColorStop(0, 'rgba(230,240,255,0)'); lg.addColorStop(.5, 'rgba(230,240,255,.1)'); lg.addColorStop(1, 'rgba(230,240,255,0)');
+      x.strokeStyle = lg; x.lineWidth = .8; x.beginPath(); x.moveTo(fx - Math.cos(a) * L, fy - Math.sin(a) * L); x.lineTo(fx + Math.cos(a) * L, fy + Math.sin(a) * L); x.stroke();
+    }
+    if (spill) { g = x.createRadialGradient(fx, fy, 0, fx, fy, 120); g.addColorStop(0, 'rgba(200,210,230,.1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.save(); x.translate(fx, fy); x.scale(.45, 1); x.translate(-fx, -fy); x.fillRect(fx - 120, fy, 240, 120); x.restore(); }
+  };
+  flare(575 / 2, 0, 6, 60, true);
+  flare(1765 / 2, H, 7, 55, false);
   return c;
 }
 
-/* ------------------------------------------------------------------ */
-/* Image sources                                                       */
-/* ------------------------------------------------------------------ */
-const userImages = [];
-const sourceSel = $('source'), statusEl = $('status');
-let lastUser = -1;
-function loadImage(url, cors) { return new Promise((res, rej) => { const im = new Image(); if (cors) im.crossOrigin = 'anonymous'; im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
-let picsumFailed = false;
-async function fetchImage(portrait) {
-  const src = sourceSel.value;
-  if (src === 'mine' && userImages.length) {
-    let i = (Math.random() * userImages.length) | 0;
-    if (userImages.length > 1 && i === lastUser) i = (i + 1) % userImages.length;
-    lastUser = i; return userImages[i];
-  }
-  if (src === 'picsum' && !picsumFailed) {
-    try {
-      const seed = Math.random().toString(36).slice(2, 9);
-      const [w, h] = portrait ? [700, 1100] : [1400, 820];
-      const im = await Promise.race([loadImage(`https://picsum.photos/seed/${seed}/${w}/${h}`, true), new Promise((_, rej) => setTimeout(rej, 7000))]);
-      return { src: im, name: 'photo ' + seed };
-    } catch (e) {
-      picsumFailed = true;
-      statusEl.textContent = 'picsum.photos did not load here, probably because this viewer blocks outside images. Showing generated plates instead.';
-    }
-  }
-  return genPlate(portrait);
-}
-function gradeFor() { const g = $('grade').value; return g === 'sepia' ? true : g === 'original' ? false : Math.random() < .45; }
-async function makeImage(portrait) { const raw = await fetchImage(portrait); return { img: treat(raw.src, gradeFor()), name: raw.name }; }
-
-/* ------------------------------------------------------------------ */
-/* Tags                                                                */
-/* ------------------------------------------------------------------ */
-const GLYPH_LETTERS = 'ABDEGHIKLMNORSTUWXZ';
-function glyphWord(n) { let s = ''; for (let i = 0; i < n; i++) s += GLYPH_LETTERS[(Math.random() * GLYPH_LETTERS.length) | 0]; return s; }
-function makeTag(kind) {
-  if (kind === 'title') return { kind, lines: [glyphWord(3 + (Math.random() * 7 | 0))] };
-  const n = 2 + (Math.random() * 4 | 0), lines = [];
-  for (let i = 0; i < n; i++) { let l = ''; while (l.length < 28 + Math.random() * 14) l += glyphWord(2 + (Math.random() * 7 | 0)) + ' '; lines.push(l.trim()); }
-  if (Math.random() < .5) lines[n - 1] = lines[n - 1].slice(0, 14 + (Math.random() * 10 | 0));
-  return { kind, lines };
-}
-
-/* ------------------------------------------------------------------ */
-/* Shots: a group of cards (plus ghosts) laid out on the 1920x1080 stage */
-/* ------------------------------------------------------------------ */
-const enabledFx = new Set(FX.map(f => f.id));
-const enabledLayouts = new Set(LAYOUTS.map(l => l.id));
-
-async function buildShot(layoutId, prev, stacked) {
-  const shot = { cards: [], ghosts: [], tag: null, layout: layoutId, born: 0, zoomDir: Math.random() < .6 ? -1 : 1, drift: [rand(-14, 14), rand(-8, 8)] };
-  const cx = VW / 2 + rand(-30, 30), cy = VH / 2 + rand(-20, 10);
-  if (layoutId === 'pair') {
-    const h = rand(560, 640), w = h * .62, gap = rand(44, 60);
-    const [a, b] = await Promise.all([makeImage(true), makeImage(true)]);
-    shot.cards.push({ ...a, cx: cx - (w + gap) / 2, cy, w, h }, { ...b, cx: cx + (w + gap) / 2, cy, w, h });
-    if (Math.random() < .6) shot.blink = { card: 0, frames: [2, 3, 7] };
-  } else if (layoutId === 'art') {
-    const h = rand(640, 760), w = h * rand(.85, .95);
-    shot.cards.push({ ...(await makeImage(true)), cx, cy, w, h });
+/* ================================================================== */
+/* WebGL renderer                                                      */
+/* ================================================================== */
+const canvas = $('cv');
+const gl = canvas.getContext('webgl', { alpha: false, antialias: false, premultipliedAlpha: true, preserveDrawingBuffer: false });
+if (!gl) { statusEl.textContent = 'WebGL is unavailable in this browser, so the stage cannot render.'; return; }
+const HP = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT).precision > 0 ? 'highp' : 'mediump';
+const VS = `attribute vec2 aPos; uniform vec4 uRect; varying vec2 vLocal; varying vec2 vUv;
+void main() { vUv = aPos; vLocal = aPos * uRect.zw; vec2 p = uRect.xy + aPos * uRect.zw; gl_Position = vec4(p.x / 960.0 - 1.0, 1.0 - p.y / 540.0, 0.0, 1.0); }`;
+const FS = {
+  bg: `uniform sampler2D uSmokeT; uniform sampler2D uFlareT; uniform float uSmoke, uFlare; varying vec2 vUv;
+void main() {
+  vec3 c = vec3(0.034) + texture2D(uSmokeT, vUv).rgb * uSmoke + texture2D(uFlareT, vUv).rgb * uFlare;
+  gl_FragColor = vec4(c, 0.0);                            /* alpha 0 = background; cards accumulate coverage */
+}`,
+  card: `uniform sampler2D uTex; uniform vec2 uSize; uniform vec4 uCrop; uniform vec2 uTexel;
+uniform float uMargin, uScale, uCell, uMesh, uMeshEdge, uMeshAA, uSepia, uGhost, uFlicker, uOpacity, uFrameless, uKey;
+varying vec2 vLocal;
+const vec3 CREAM = vec3(0.933, 0.894, 0.827);
+const vec3 HALO = vec3(0.5, 0.44, 0.36);
+float edgeDist(vec2 q) { return min(min(q.x, q.y), min(uSize.x - q.x, uSize.y - q.y)); }
+float bw_mesh(float di) { return 5.0 * uScale - di; }       /* > 0 on the border and halo: dots show strongly there */
+void main() {
+  vec2 q = vLocal - vec2(uMargin);
+  float di = edgeDist(q);
+  vec2 uv = uCrop.xy + clamp(q / uSize, 0.0, 1.0) * uCrop.zw;
+  vec4 tx = texture2D(uTex, uv) * 2.0;                    /* slight softness, like the projected source */
+  tx += texture2D(uTex, uv + uTexel * vec2(0.8, 0.8)) + texture2D(uTex, uv + uTexel * vec2(-0.8, 0.8));
+  tx += texture2D(uTex, uv + uTexel * vec2(0.8, -0.8)) + texture2D(uTex, uv + uTexel * vec2(-0.8, -0.8));
+  tx /= 6.0;
+  vec3 c = tx.a > 0.004 ? tx.rgb / tx.a : vec3(0.0);
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  c = mix(c, vec3(l * 1.07 + 0.06, l * 0.93 + 0.035, l * 0.74 + 0.01), uSepia);
+  c = 0.035 + c * 0.915;                                  /* milky projection: blacks ~9, whites ~240 */
+  vec2 e = q / uSize - 0.5;
+  c *= 1.0 - 0.26 * smoothstep(0.25, 0.8, length(e * vec2(1.0, 0.85)) * 1.3);
+  float lg = dot(c, vec3(0.299, 0.587, 0.114));
+  c = mix(c, mix(vec3(lg), c, 0.65) * 0.5 + 0.17, uGhost); /* powered-down ghost card */
+  c *= uFlicker;
+  vec3 col; float a;
+  float inside = step(0.0, di);
+  if (uFrameless > 0.5) {
+    float ka = uKey > 0.5 ? smoothstep(0.1, 0.35, l) : tx.a;
+    a = ka * smoothstep(0.0, 14.0 * uScale, di);
+    col = c * a;
   } else {
-    const aspect = layoutId === 'flat' ? 1.85 : 2.39;
-    let w = layoutId === 'flat' ? rand(1000, 1260) : rand(1120, 1540);
-    let h = w / aspect; if (h > 700) { h = 700; w = h * aspect; }
-    shot.cards.push({ ...(await makeImage(false)), cx, cy, w, h });
+    float bw = 3.6 * uScale;
+    a = inside; col = c * inside;
+    float ig = inside * exp(-max(di - bw, 0.0) / (4.5 * uScale));
+    col = mix(col, CREAM * inside, 0.4 * ig);
+    float band = smoothstep(-0.8 * uScale, 0.4 * uScale, di) * (1.0 - smoothstep(bw - 0.6 * uScale, bw + 0.5 * uScale, di));
+    col = mix(col, CREAM, band); a = max(a, band);
+    float d2 = -edgeDist(q + vec2(1.5 * uScale));
+    float og = (1.0 - inside) * (1.0 - band) * exp(-max(d2, 0.0) / (3.5 * uScale)) * 0.38;
+    col += HALO * og; a = max(a, og * 0.3);
   }
-  if (stacked && prev && prev.cards.length === 1 && shot.cards.length === 1) {
-    /* stack cut: the previous front card (and its ghosts) move behind, offset up-right */
-    const f = shot.cards[0];
-    const olds = [prev.cards[0], ...prev.ghosts].slice(0, 2);
-    shot.ghosts = olds.map((o, k) => ({ img: o.img, name: o.name, w: f.w * Math.pow(.957, k + 1), h: f.h * Math.pow(.957, k + 1), dx: 71 * (k + 1), dy: -50 * (k + 1) }));
-    const n = shot.ghosts.length; f.cx -= 36 * n; f.cy += 25 * n;
+  vec2 g = fract(q / uCell) - 0.5;                        /* LED mesh: 300 cells across the card */
+  float dotm = 1.0 - smoothstep(0.26, 0.5, length(g));
+  float meshK = mix(max(uMesh, uMeshEdge), uMesh, step(bw_mesh(di), 0.0));
+  col *= mix(1.0, 0.5 + 0.7 * dotm, meshK * uMeshAA);
+  gl_FragColor = vec4(col, a) * uOpacity;
+}`,
+  tag: `uniform sampler2D uTex; uniform float uOpacity; varying vec2 vUv;
+void main() { gl_FragColor = texture2D(uTex, vUv) * uOpacity; }`,
+  dot: `uniform vec4 uColor; varying vec2 vUv;
+void main() { float d = length(vUv - 0.5) * 2.0; float a = (1.0 - smoothstep(0.1, 1.0, d)) * uColor.a; gl_FragColor = vec4(uColor.rgb * a, a); }`,
+  post: `uniform sampler2D uTex; uniform float uCA, uGrain, uT, uFade, uGrid, uPeriod; varying vec2 vUv;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+vec3 at(vec2 v) { return texture2D(uTex, vec2(v.x, 1.0 - v.y)).rgb; }
+void main() {
+  vec2 px = vec2(1.0 / 1920.0, 1.0 / 1080.0) * uCA;       /* blue shifted down-right, red up-left */
+  vec3 c = vec3(at(vUv + px * 0.7).r, at(vUv + px * 0.3).g, at(vUv - px * 0.9).b);
+  /* fixed screen grid on the background only, snapped to whole device pixels so it never beats */
+  float cover = texture2D(uTex, vec2(vUv.x, 1.0 - vUv.y)).a;
+  vec2 cellIx = mod(floor(gl_FragCoord.xy), uPeriod);
+  float line = max(step(uPeriod - 1.5, cellIx.x), step(uPeriod - 1.5, cellIx.y));
+  c *= mix(1.0, (1.0 - line * uGrid) * (1.0 + uGrid * 0.3), 1.0 - clamp(cover, 0.0, 1.0));
+  c += (hash(gl_FragCoord.xy + fract(uT) * 91.7) - 0.5) * 0.05 * uGrain;
+  vec2 d = vUv - 0.5; c *= 1.0 - 0.3 * dot(d, d);
+  gl_FragColor = vec4(c * uFade, 1.0);
+}`,
+};
+function program(fs) {
+  const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  const p = gl.createProgram();
+  gl.attachShader(p, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, `precision ${HP} float;\n${fs}`));
+  gl.bindAttribLocation(p, 0, 'aPos'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(p, i); u[info.name] = gl.getUniformLocation(p, info.name); }
+  return { p, u };
+}
+const PROG = {};
+try { for (const k of Object.keys(FS)) PROG[k] = program(FS[k]); }
+catch (e) { statusEl.textContent = 'The stage shaders failed to compile on this device: ' + e.message; return; }
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
+function newTex() {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+function upload(tex, src, premul) {
+  gl.bindTexture(gl.TEXTURE_2D, tex); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premul);
+  try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); return true; } catch (e) { return false; }
+}
+const smokeTex = newTex(); upload(smokeTex, makeSmoke(), false);
+const flareTex = newTex(); upload(flareTex, makeFlares(), false);
+
+let S = 1, fbo = null, fboTex = null, fbW = 0, fbH = 0;
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = clamp(Math.round(r.width * dpr), 320, 2560), h = Math.round(w * 9 / 16);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  S = w / VW;
+}
+new ResizeObserver(resize).observe(canvas);
+function ensureFbo(w, h) {
+  if (fbo && fbW === w && fbH === h) return;
+  if (fboTex) gl.deleteTexture(fboTex); if (fbo) gl.deleteFramebuffer(fbo);
+  fboTex = newTex(); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fboTex, 0);
+  fbW = w; fbH = h;
+}
+const rect = (P, x, y, w, h) => gl.uniform4f(P.u.uRect, x, y, w, h);
+const draw = () => gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+/* ================================================================== */
+/* Cards, tags, shots                                                  */
+/* ================================================================== */
+const val = id => parseFloat($(id).value);
+const spd = () => val('speed');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function clipAspect(clip) { return clip.w && clip.h ? clip.w / clip.h : 16 / 9; }
+function sepiaFor(plan, clip) {
+  const g = $('grade').value;
+  if (g === 'sepia') return .85;
+  if (g === 'original') return 0;
+  if (plan && plan.sepia !== undefined && $('source').value === 'gen') return plan.sepia;
+  return Math.random() < (clip.sepiaBias ?? .45) ? .85 : 0;
+}
+function makeCard(clip, w, h, cx, cy, plan) {
+  return { clip, w, h, cx, cy, aspect: w && h ? w / h : 2.39, born: 0, tex: null, hasFrame: false, ghostAt: -1, blink: null, frameless: false, seed: (Math.random() * 1024) | 0, sepia: sepiaFor(plan, clip), pan: rand(-1, 1) };
+}
+function cardRect(card, tr, t) {
+  const k = Math.max(.5, 1 - SHRINK * Math.max(0, t - card.born));   /* linear shrink toward frame centre */
+  const s = k * tr.s, w = card.w * s, h = card.h * s;
+  const cx = CX + (card.cx - CX) * s + tr.dx, cy = CY + (card.cy - CY) * s + tr.dy;
+  return { x: cx - w / 2, y: cy - h / 2, w, h, cx, cy, s };
+}
+function tagRect(tag, r) {
+  const s = r.s, w = tag.w * s, h = tag.h * s;
+  let x, y;
+  switch (tag.pos) {
+    case 'bottom': x = r.cx - w / 2; y = r.y + r.h - 12 * s; break;
+    case 'right': x = r.x + r.w - 36 * s; y = r.cy - h / 2; break;
+    case 'bottomright': x = r.x + r.w + 90 * s - w; y = r.y + r.h - 74 * s; break;
+    case 'bottomleft': x = r.x - 67 * s; y = r.y + r.h + 27 * s; break;
+    case 'topleft': x = r.x - 84 * s; y = r.y - 75 * s; break;
+    case 'cutTitle': x = r.x - .48 * r.w; y = r.y + 1.12 * r.h; break;
+    default: x = r.x - .285 * r.w; y = r.y + 1.38 * r.h;
   }
-  if ($('tags').value !== 'off' && Math.random() < .6) {
-    const c = shot.cards[shot.cards.length - 1];
-    let pos;
-    if (layoutId === 'pair') pos = 'right';
-    else pos = weighted([{ id: 'bottom', w: 4 }, { id: 'bottomright', w: 2 }, { id: 'topleft', w: 1.5 }, { id: 'bottomleft', w: 1 }]).id;
-    shot.tag = { ...makeTag(pos === 'bottom' || pos === 'right' ? 'title' : 'para'), pos, card: shot.cards.length - 1 };
+  return { x, y, w, h };
+}
+function cropFor(card, r) {
+  if (card.frameless) return [0, 0, 1, 1];
+  const ca = r.w / r.h, sa = clipAspect(card.clip);
+  let sw = 1, sh = 1;
+  if (sa > ca) sw = ca / sa; else sh = sa / ca;
+  const k = card.clip.still ? Math.min(1, card.clip.age / 9) : 0;       /* stills get a slow push-in */
+  const z = 1 + .06 * k; sw /= z; sh /= z;
+  return [(1 - sw) / 2 + card.pan * (1 - sw) * .4 * k, (1 - sh) / 2, sw, sh];
+}
+function syncTex(card) {
+  const c = card.clip;
+  if (!card.tex) { card.tex = newTex(); c.dirty = true; }
+  if (c.dirty && (c.kind !== 'video' || c.el.readyState >= 2)) { if (upload(card.tex, c.src, c.alpha)) card.hasFrame = true; c.dirty = false; }
+}
+function drawCard(card, r, opacity, t) {
+  syncTex(card); if (!card.hasFrame) return;
+  const P = PROG.card; gl.useProgram(P.p);
+  const M = 30 * r.s;
+  rect(P, r.x - M, r.y - M, r.w + 2 * M, r.h + 2 * M);
+  gl.uniform2f(P.u.uSize, r.w, r.h); gl.uniform1f(P.u.uMargin, M); gl.uniform1f(P.u.uScale, r.s);
+  const cell = card.frameless || r.w >= r.h ? r.w / 300 : r.h / 170;
+  const ghost = card.ghostAt >= 0 ? 1 : 0;
+  gl.uniform1f(P.u.uCell, cell);
+  gl.uniform1f(P.u.uMesh, val('led') * (ghost ? .9 : .3)); gl.uniform1f(P.u.uMeshEdge, val('led') * .6);
+  gl.uniform1f(P.u.uMeshAA, clamp((cell * S - 1.7) / 1.3, 0, 1));
+  gl.uniform1f(P.u.uSepia, card.sepia); gl.uniform1f(P.u.uGhost, ghost);
+  const fr = Math.floor(t * FPS);
+  gl.uniform1f(P.u.uFlicker, reduceMotion ? 1 : 1 + (NOISE[(fr * 7 + card.seed) & 1023] - .5) * .05);
+  gl.uniform1f(P.u.uOpacity, opacity);
+  gl.uniform1f(P.u.uFrameless, card.frameless ? 1 : 0); gl.uniform1f(P.u.uKey, card.frameless && !card.clip.alpha ? 1 : 0);
+  gl.uniform4fv(P.u.uCrop, cropFor(card, r));
+  gl.uniform2f(P.u.uTexel, 1 / Math.max(1, card.clip.w), 1 / Math.max(1, card.clip.h));
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, card.tex); gl.uniform1i(P.u.uTex, 0);
+  draw();
+}
+function drawTag(tag, r, opacity) {
+  if (!tag.tex) { tag.tex = newTex(); upload(tag.tex, tag.canvas, true); }
+  const P = PROG.tag; gl.useProgram(P.p); rect(P, r.x, r.y, r.w, r.h);
+  gl.uniform1f(P.u.uOpacity, opacity);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tag.tex); gl.uniform1i(P.u.uTex, 0);
+  draw();
+}
+function drawShot(shot, tr, t) {
+  if (!shot || !tr.show) return;
+  const front = shot.cards[shot.cards.length - 1], stacked = shot.cards.length > 1 && shot.layout !== 'pair';
+  if (tr.cards !== false) for (const card of shot.cards) {
+    if (card.ghostAt >= 0 && Math.round((t - card.ghostAt) * FPS * spd()) === 2) continue;   /* ghost blinks off one frame */
+    if (card.blink && t >= card.born && card.blink.includes(Math.round((t - card.born) * FPS))) continue;
+    drawCard(card, cardRect(card, tr, t), tr.a * (stacked && card === front ? .9 : 1), t);
   }
+  for (const tag of shot.tags) drawTag(tag, tagRect(tag, cardRect(tag.card, tr, t)), tr.a);
+}
+function disposeCard(c) { if (c.tex) gl.deleteTexture(c.tex); c.clip.dispose(); }
+function disposeTag(tg) { if (tg.tex) gl.deleteTexture(tg.tex); }
+function disposeShot(s) { if (!s) return; s.cards.forEach(disposeCard); s.tags.forEach(disposeTag); }
+function disposePlan(p) { if (!p) return; if (p.shot) disposeShot(p.shot); if (p.card) disposeCard(p.card); (p.tags || []).forEach(disposeTag); (p.rapidClips || []).forEach(c => c.dispose()); }
+
+/* ================================================================== */
+/* The Harkonnen timeline, as measured                                  */
+/* ================================================================== */
+const SCRIPT = [
+  { t: 3.92, fx: 'power', layout: 'scope', w: 1657, scene: 'legion', sepia: .85, tag: ['bottom', 'title'] },
+  { t: 9.68, fx: 'stack', layout: 'scope', w: 1545, scene: 'hull', sepia: .85 },
+  { t: 12.93, fx: 'push', dir: 'right', layout: 'pair', scenes: ['figure', 'figure'], tag: ['right', 'title'], blink: true },
+  { t: 17.52, zb: .16, zk: .8, fx: 'zoom', layout: 'scope', w: 1330, scene: 'throne' },
+  { t: 19.85, fx: 'stack', layout: 'scope', w: 1355, scene: 'throne' },
+  { t: 20.94, fx: 'push', dir: 'down', layout: 'cutout', scene: 'specimen', tag: 'cutout' },
+  { t: 23.61, fx: 'push', dir: 'left', layout: 'scope', w: 1255, scene: 'legion', sepia: .85 },
+  { t: 29.57, fx: 'stack', layout: 'scope', w: 1250, scene: 'fire' },
+  { t: 32.82, k: .28, fx: 'slam', layout: 'scope', w: 1385, scene: 'giedi', tag: ['bottomleft', 'para'] },
+  { t: 38.36, fx: 'push', dir: 'left', layout: 'scope', w: 1440, scene: 'giedi', tag: ['bottomright', 'para'] },
+  { t: 41.58, fx: 'push', dir: 'up', layout: 'scope', w: 1335, scene: 'storm', sepia: .7 },
+  { t: 44.00, fx: 'stack', layout: 'scope', w: 1375, scene: 'desert', sepia: .85 },
+  { t: 46.00, zb: .18, zk: .38, fx: 'zoom', layout: 'scope', w: 1352, scene: 'limb' },
+  { t: 48.76, zb: .1, zk: .8, fx: 'zoom', layout: 'scope', w: 1165, scene: 'throne' },
+  { t: 52.02, fx: 'push', dir: 'down', layout: 'flat', w: 1350, scene: 'desert', sepia: 0 },
+  { t: 57.35, fx: 'push', dir: 'right', layout: 'scope', w: 1310, scene: 'fire' },
+  { t: 64.23, fx: 'push', dir: 'down', layout: 'scope', w: 1348, scene: 'spice', sepia: .8 },
+  { t: 67.15, fx: 'stack', layout: 'scope', w: 1376, scene: 'spice', sepia: .8 },
+  { t: 68.37, fx: 'push', dir: 'left', layout: 'scope', w: 1350, scene: 'desert', sepia: .5 },
+  { t: 70.57, fx: 'push', dir: 'up', layout: 'scope', w: 1350, scene: 'figure', tag: ['bottomright', 'para'] },
+  { t: 75.20, fx: 'stack', layout: 'scope', w: 1350, scene: 'figure', tag: ['topleft', 'para'] },
+  { t: 77.75, zb: .14, zk: .55, fx: 'zoom', layout: 'scope', w: 1434, scene: 'fire', rapid: true },
+  { t: 79.52, fx: 'cut', layout: 'scope', w: 1285, scene: 'blast' },
+  { t: 83.06, fx: 'push', dir: 'right', layout: 'scope', w: 1350, scene: 'limb' },
+  { t: 87.30, fx: 'cut', layout: 'concept', w: 762, h: 835, scene: 'concept' },
+  { t: 90.88, fx: 'stack', layout: 'concept', w: 711, h: 913, scene: 'concept', tag: ['right', 'title'] },
+  { t: 92.06, fx: 'push', dir: 'down', layout: 'scope', w: 1358, scene: 'fire' },
+  { t: 93.97, fx: 'stack', layout: 'scope', w: 1395, scene: 'blast' },
+  { t: 97.18, fx: 'stack', layout: 'scope', w: 1345, scene: 'blast' },
+  { t: 99.47, k: .2, fx: 'slam', layout: 'scope', w: 1400, scene: 'fire' },
+  { t: 102.65, fx: 'off' },
+  { t: 105.50, fx: 'end' },
+];
+
+/* ================================================================== */
+/* Director                                                            */
+/* ================================================================== */
+const FX = [
+  { id: 'push', name: 'Push', w: 11 },
+  { id: 'stack', name: 'Stack cut', w: 9 },
+  { id: 'zoom', name: 'Zoom-through', w: 3 },
+  { id: 'slam', name: 'Slam', w: 2 },
+  { id: 'cut', name: 'Hard cut', w: 1 },
+  { id: 'rapid', name: 'Rapid cuts', w: 1 },
+  { id: 'cycle', name: 'Power off/on', w: .6 },
+];
+const LAYOUTS = [
+  { id: 'scope', name: 'Scope 2.39', w: 16 },
+  { id: 'flat', name: 'Flat 16:9', w: 1.2 },
+  { id: 'pair', name: 'Portrait pair', w: 1.2 },
+  { id: 'concept', name: 'Concept card', w: 1.6 },
+  { id: 'cutout', name: 'Cut-out', w: 1 },
+];
+const enabledFx = new Set(FX.map(f => f.id)), enabledLayouts = new Set(LAYOUTS.map(l => l.id));
+const ARROW = { left: '←', right: '→', up: '↑', down: '↓' };
+const LABEL = { push: 'Push', stack: 'Stack cut', zoom: 'Zoom-through', slam: 'Slam', power: 'Power-on', off: 'Power-off', cut: 'Hard cut' };
+
+const state = { mode: 'script', t: 0, playing: true, prev: null, cur: null, trans: null, holdUntil: 1.2, pending: null, building: false, token: 0, forced: 'power', scriptIdx: 0, scriptStart: 0, fadeStart: 0, rapid: null, lastFx: null, pauseAt: null };
+const SHOWN = { dx: 0, dy: 0, s: 1, a: 1, show: true, cards: true };
+const HIDDEN = { ...SHOWN, show: false };
+
+function canStack() { const c = state.cur; return !!c && ['scope', 'flat', 'concept'].includes(c.layout) && c.cards.length < 3; }
+function randomTag(layout) {
+  if (layout === 'cutout') return 'cutout';
+  if (layout === 'pair') return Math.random() < .75 ? ['right', 'title'] : null;
+  if (layout === 'concept') return Math.random() < .35 ? ['right', 'title'] : null;
+  if (Math.random() > .42) return null;
+  return weighted([{ v: ['bottom', 'title'], w: 3 }, { v: ['bottomright', 'para'], w: 2 }, { v: ['topleft', 'para'], w: 1.5 }, { v: ['bottomleft', 'para'], w: 1 }]).v;
+}
+function randomPlan() {
+  let fx = state.forced; state.forced = null;
+  if (!fx) {
+    const pool = FX.filter(f => enabledFx.has(f.id) && (f.id !== state.lastFx || f.id === 'push' || f.id === 'stack'));
+    fx = weighted(pool.length ? pool : FX.filter(f => enabledFx.has(f.id))).id;
+  }
+  if (!state.cur && fx !== 'power') fx = 'power';
+  if (fx === 'cycle') return { fx: 'off' };
+  if (fx === 'stack' && !canStack()) fx = 'push';
+  let layout = fx === 'stack' ? state.cur.layout : weighted(LAYOUTS.filter(l => enabledLayouts.has(l.id))).id;
+  const rapid = fx === 'rapid';
+  if (rapid) layout = 'scope';
+  return { fx: rapid ? pick(['cut', 'zoom']) : fx, layout, dir: pick(['left', 'right', 'up', 'down']), rapid, tag: randomTag(layout) };
+}
+async function buildShot(plan) {
+  const L = plan.layout, shot = { layout: L, cards: [], tags: [] };
+  if (L === 'pair') {
+    const sc = plan.scenes || [];
+    const [a, b] = await Promise.all([makeClip('port', sc[0]), makeClip('port', sc[1])]);
+    const j = plan.w ? 0 : rand(-12, 12);
+    shot.cards.push(makeCard(a, 477, 739, 685 + j, 540, plan), makeCard(b, 458, 712, 1220 + j, 539, plan));
+    if (plan.blink || (plan.blink === undefined && Math.random() < .6)) shot.cards[0].blink = [1, 4];
+  } else if (L === 'concept') {
+    const h = plan.h || rand(835, 913), w = plan.w || h * rand(.78, .91);
+    shot.cards.push(makeCard(await makeClip('port', plan.scene), w, h, CX, CY, plan));
+  } else if (L === 'cutout') {
+    const clip = await makeClip('cut', plan.scene), w = 800, h = w / clipAspect(clip);
+    const c = makeCard(clip, w, h, 1000, 500, plan); c.frameless = true; c.sepia = 0; shot.cards.push(c);
+  } else {
+    const aspect = L === 'flat' ? 1.777 : 2.39, w = plan.w || rand(1300, 1450);
+    shot.cards.push(makeCard(await makeClip('land', plan.scene), w, w / aspect, CX, CY, plan));
+  }
+  const anchor = shot.cards[shot.cards.length - 1];
+  shot.tags = buildTags(plan.tag).map(tg => Object.assign(tg, { card: anchor }));
   return shot;
 }
-
-/* ------------------------------------------------------------------ */
-/* Canvas + pre-rendered layers                                        */
-/* ------------------------------------------------------------------ */
-const cv = $('cv'), ctx = cv.getContext('2d');
-let S = 1;                  /* device pixels per virtual pixel */
-let dotLayer = null, vignette = null;
-const grainTiles = [];
-for (let i = 0; i < 4; i++) {
-  const [c, g] = mkCanvas(256, 256); const id = g.createImageData(256, 256);
-  for (let p = 0; p < id.data.length; p += 4) { const v = Math.random() * 255; id.data[p] = id.data[p + 1] = id.data[p + 2] = v; id.data[p + 3] = 255; }
-  g.putImageData(id, 0, 0); grainTiles.push(c);
-}
-
-/* smoke: value-noise fbm, weighted to the lower third and right edge like the video */
-const smoke = (() => {
-  const W = 640, H = 360, [c, g] = mkCanvas(W, H), id = g.createImageData(W, H);
-  const r = rng(77), P = []; for (let i = 0; i < 512; i++) P.push(r());
-  const h = (x, y) => P[((x & 255) + ((y & 255) * 57 & 255)) & 511];
-  const n = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf); return (h(xi, yi) * (1 - u) + h(xi + 1, yi) * u) * (1 - v) + (h(xi, yi + 1) * (1 - u) + h(xi + 1, yi + 1) * u) * v; };
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    let f = 0, a = .5, fx = x / 70, fy = y / 50; for (let o = 0; o < 5; o++) { f += a * n(fx, fy); fx *= 2.1; fy *= 2.1; a *= .5; }
-    const yb = clamp((y / H - .55) / .45, 0, 1), xr = clamp((x / W - .72) / .28, 0, 1) * clamp((y / H - .1) / .5, 0, 1);
-    let m = clamp((f - .45) * 2.2, 0, 1) * clamp(Math.pow(yb, 1.6) + Math.pow(xr, 1.8) * .7, 0, 1);
-    const i = (y * W + x) * 4; const v = 60 + f * 90;
-    id.data[i] = v; id.data[i + 1] = v; id.data[i + 2] = v * 1.04; id.data[i + 3] = m * 255;
-  }
-  g.putImageData(id, 0, 0); return c;
-})();
-
-function resize() {
-  const r = cv.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = Math.max(320, Math.round(r.width * dpr)), h = Math.round(w * 9 / 16);
-  if (cv.width === w && cv.height === h) return;
-  cv.width = w; cv.height = h; S = w / VW;
-  /* dot-matrix screen: dark gaps between round cells, pitch ~3 virtual px */
-  const pitch = Math.max(2, Math.round(3 * S));
-  const [tile, tg] = mkCanvas(pitch, pitch);
-  tg.fillStyle = '#000'; tg.fillRect(0, 0, pitch, pitch);
-  tg.globalCompositeOperation = 'destination-out'; tg.beginPath(); tg.arc(pitch / 2, pitch / 2, pitch * .42, 0, 7); tg.fill();
-  const [dl, dg] = mkCanvas(w, h); dg.fillStyle = dg.createPattern(tile, 'repeat'); dg.fillRect(0, 0, w, h); dotLayer = dl;
-  const [vl, vg] = mkCanvas(w, h); const gr = vg.createRadialGradient(w / 2, h * .48, h * .25, w / 2, h / 2, w * .62);
-  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.55)'); vg.fillStyle = gr; vg.fillRect(0, 0, w, h); vignette = vl;
-}
-new ResizeObserver(resize).observe(cv);
-
-/* ------------------------------------------------------------------ */
-/* Drawing                                                             */
-/* ------------------------------------------------------------------ */
-function drawCover(img, x, y, w, h, zoom, px, py) {
-  const iw = img.width, ih = img.height, s = Math.max(w / iw, h / ih) * zoom;
-  const sw = w / s, sh = h / s;
-  const sx = clamp((iw - sw) / 2 + px * (iw - sw) / 2, 0, iw - sw), sy = clamp((ih - sh) / 2 + py * (ih - sh) / 2, 0, ih - sh);
-  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
-}
-function drawFrameCard(img, cx, cy, w, h, alpha, zoom, pan) {
-  const x = cx - w / 2, y = cy - h / 2;
-  /* image first; below 1 alpha the ghost card behind shows through, as in the video */
-  ctx.globalAlpha = alpha;
-  drawCover(img, x, y, w, h, zoom, pan[0], pan[1]);
-  ctx.globalAlpha = 1;
-  /* cream border with a soft halo; the dot-matrix pass breaks the halo into dots like the source */
-  ctx.save();
-  ctx.shadowColor = 'rgba(245,232,210,.4)'; ctx.shadowBlur = 24 * S;
-  ctx.strokeStyle = '#eee4d3'; ctx.lineWidth = 4; ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
-  ctx.restore();
-  ctx.strokeStyle = 'rgba(168,176,186,.6)'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-  ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 1; ctx.strokeRect(x - 4.5, y - 4.5, w + 9, h + 9);
-}
-function drawTag(tag, card) {
-  const x0 = card.cx - card.w / 2, y0 = card.cy - card.h / 2, x1 = x0 + card.w, y1 = y0 + card.h;
-  const title = tag.kind === 'title';
-  const fs = title ? 26 : 12.5, lh = title ? 34 : 15.5, padX = title ? 22 : 12, padY = title ? 8 : 7;
-  ctx.font = `${fs}px "Uncial Antiqua", "Cormorant", Georgia, serif`;
-  const tw = Math.max(...tag.lines.map(l => ctx.measureText(l).width));
-  const bw = tw + padX * 2, bh = tag.lines.length * lh + padY * 2 - (title ? 4 : 0);
-  let bx, by;
-  if (tag.pos === 'bottom') { bx = card.cx - bw / 2; by = y1 - 10; }
-  else if (tag.pos === 'bottomright') { bx = x1 - bw * .62; by = y1 - 6; }
-  else if (tag.pos === 'bottomleft') { bx = x0 - 18; by = y1 + 6; }
-  else if (tag.pos === 'topleft') { bx = x0 - 22; by = y0 - bh * .55; }
-  else { bx = x1 + 14; by = card.cy - bh / 2 - 20; }
-  ctx.fillStyle = '#ad4034'; ctx.fillRect(bx, by, bw, bh);
-  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(bx, by + bh - 2, bw, 2);
-  ctx.textBaseline = 'top'; ctx.textAlign = 'left';
-  tag.lines.forEach((l, i) => {
-    const ty = by + padY + i * lh + (title ? 2 : 0);
-    ctx.fillStyle = 'rgba(70,12,8,.75)'; ctx.fillText(l, bx + padX + 1.5, ty + 2);
-    ctx.fillStyle = '#f5ddc9'; ctx.fillText(l, bx + padX, ty);
-  });
-}
-function drawShot(shot, t, tr) {
-  /* tr = { dx, dy, s, hide, hideCards } from the active transition */
-  if (!shot || tr.hide) return;
-  const age = t - shot.born, hold = val('hold') + 1.5;
-  const k = clamp(age / hold, 0, 1.4);
-  const holdScale = 1 + shot.zoomDir * .04 * k;
-  const s = tr.s * holdScale;
-  const ox = VW / 2, oy = VH / 2;
-  ctx.save();
-  ctx.translate(ox + tr.dx + shot.drift[0] * k, oy + tr.dy + shot.drift[1] * k);
-  ctx.scale(s, s);
-  ctx.translate(-ox, -oy);
-  const inner = 1.03 + .05 * k, pan = [.25 * shot.drift[0] / 14 * k, .2 * shot.drift[1] / 8 * k];
-  if (!tr.hideCards) {
-    const f = shot.cards[0];
-    for (let i = shot.ghosts.length - 1; i >= 0; i--) {
-      const g = shot.ghosts[i];
-      drawFrameCard(g.img, f.cx + g.dx, f.cy + g.dy, g.w, g.h, .92, 1.03, [0, 0]);
+async function prepare() {
+  if (state.pending || state.building) return;
+  state.building = true;
+  const token = state.token;
+  let plan = null;
+  try {
+    plan = state.mode === 'script' ? (SCRIPT[state.scriptIdx] ? { ...SCRIPT[state.scriptIdx] } : { fx: 'end' }) : randomPlan();
+    if (plan.fx === 'stack') {
+      const port = plan.layout === 'concept';
+      plan.card = makeCard(await makeClip(port ? 'port' : 'land', plan.scene), 0, 0, 0, 0, plan);
+      plan.card.aspect = port ? (plan.w && plan.h ? plan.w / plan.h : rand(.78, .91)) : plan.layout === 'flat' ? 1.777 : 2.39;
+      plan.tags = buildTags(plan.tag);
+    } else if (plan.fx !== 'off' && plan.fx !== 'end') {
+      plan.shot = await buildShot(plan);
+      if (plan.rapid) plan.rapidClips = await Promise.all(Array.from({ length: 6 }, () => makeClip('land', plan.scene)));
     }
-    const frameIdx = Math.floor(age * FPS);
-    shot.cards.forEach((c, i) => {
-      if (shot.blink && shot.blink.card === i && shot.blink.frames.includes(frameIdx)) return;
-      drawFrameCard(c.img, c.cx, c.cy, c.w, c.h, shot.ghosts.length ? .9 : 1, inner, pan);
-    });
+  } catch (e) {
+    statusEl.textContent = 'A clip failed to load: ' + e.message;
+    plan = null;
+  } finally { state.building = false; }
+  if (!plan) return;
+  if (token !== state.token) { disposePlan(plan); return; }
+  state.pending = plan;
+}
+function execute(plan) {
+  const t = state.t;
+  const land = frames => t + frames / (FPS * spd());
+  state.lastFx = plan.rapid ? 'rapid' : plan.fx;
+  if (plan.fx === 'end') { restart(); return; }
+  if (plan.fx === 'off') { state.prev = state.cur; state.cur = null; state.trans = { fx: 'off', t0: t }; hud('Power-off', ''); return; }
+  if (plan.fx === 'stack') {
+    if (canStack()) {
+      const cur = state.cur, front = cur.cards[cur.cards.length - 1], r = cardRect(front, SHOWN, t), card = plan.card;
+      /* new card lands in front, ~4 % larger, offset down-left; the old card stays put and powers down */
+      card.w = plan.w || r.w * 1.04; card.h = plan.h || card.w / card.aspect;
+      card.cx = r.cx - 78 * r.s; card.cy = r.cy + 52 * r.s; card.born = t;
+      front.ghostAt = t;
+      cur.cards.push(card);
+      while (cur.cards.length > 3) disposeCard(cur.cards.shift());
+      cur.tags.forEach(disposeTag);
+      cur.tags = plan.tags.map(tg => Object.assign(tg, { card }));
+      state.trans = { fx: 'stack', t0: t };
+      hud('Stack cut', card.clip.name + ` · ${cur.cards.length - 1} ghost${cur.cards.length > 2 ? 's' : ''}`);
+      return;
+    }
+    const card = plan.card; card.w = plan.w || 1380; card.h = plan.h || card.w / card.aspect; card.cx = CX; card.cy = CY;
+    plan.shot = { layout: plan.layout, cards: [card], tags: plan.tags.map(tg => Object.assign(tg, { card })) };
+    plan.fx = 'cut';
   }
-  if (shot.tag) drawTag(shot.tag, shot.cards[shot.tag.card]);
-  ctx.restore();
+  const shot = plan.shot;
+  if (state.prev) disposeShot(state.prev);
+  state.prev = state.cur; state.cur = shot;
+  const landing = plan.fx === 'push' ? 13 : plan.fx === 'zoom' ? 6 : 0;
+  shot.cards.forEach(c => { c.born = land(landing); });
+  const dir = plan.dir || 'left';
+  state.trans = { fx: plan.fx, t0: t, ux: dir === 'left' ? 1 : dir === 'right' ? -1 : 0, uy: dir === 'up' ? 1 : dir === 'down' ? -1 : 0, amp: .9, k: plan.k || rand(.2, .28), zb: plan.zb || rand(.1, .18), zk: plan.zk || rand(.38, .8) };
+  if (plan.rapid) state.rapid = { t0: land(landing), clips: plan.rapidClips, i: 0 };
+  hud((plan.rapid ? 'Rapid cuts via ' : '') + LABEL[plan.fx] + (plan.fx === 'push' ? ' ' + ARROW[dir] : ''), shot.cards.map(c => c.clip.name).join(' + '));
 }
-
-function drawBackground(t) {
-  ctx.fillStyle = '#070707'; ctx.fillRect(0, 0, VW, VH);
-  const sm = val('smoke');
-  if (sm > 0) {
-    /* two copies drifting at different speeds so the smoke slowly churns in place */
-    const a = Math.sin(t * .05) * 60, b = Math.sin(t * .037 + 1) * 90;
-    ctx.globalAlpha = sm * .55; ctx.drawImage(smoke, a - 60, 0, VW + 120, VH);
-    ctx.globalAlpha = sm * .35; ctx.drawImage(smoke, b - 90, 12, VW + 180, VH + 20);
-    ctx.globalAlpha = 1;
+function evalTrans(t) {
+  const res = { prev: { ...HIDDEN }, cur: { ...SHOWN }, done: true };
+  const tr = state.trans; if (!tr) return res;
+  const f = (t - tr.t0) * FPS * spd() + 1e-4;              /* epsilon: frame n must never read as n - 1 */
+  switch (tr.fx) {
+    case 'push': {
+      const p = laplace(f, .38, 13), D = tr.ux ? 1900 : 1060;
+      res.prev.show = true; res.prev.dx = -tr.ux * D * p; res.prev.dy = -tr.uy * D * p;
+      res.cur.dx = tr.ux * D * (1 - p); res.cur.dy = tr.uy * D * (1 - p);
+      res.done = f >= 26; break;
+    }
+    case 'zoom': {
+      /* measured: old card accelerates away (x1.4 per frame) for 6 frames, cut, new card decays fast from ~116 % */
+      const CUT = 6, k = .34, e0 = Math.exp(-k * CUT);
+      if (f < CUT) { res.prev.show = true; res.prev.s = 1 - .075 * (Math.exp(k * (f - CUT)) - e0) / (1 - e0); res.cur.show = false; }
+      else res.cur.s = 1 + tr.zb * Math.exp(-tr.zk * (f - CUT));
+      res.done = f >= CUT + 14; break;
+    }
+    case 'slam': res.cur.s = 1 + tr.amp * Math.exp(-tr.k * f); res.done = f >= 28; break;
+    case 'power':
+      if (f < 1) res.cur.s = 1.9; else if (f < 2) res.cur.s = 1.55; else if (f < 3) res.cur.cards = false;
+      else res.cur.s = 1 + .14 * Math.exp(-.33 * (f - 3));
+      res.done = f >= 26; break;
+    case 'off': {
+      const pat = [1, .5, 0, 1, .5, 0], i = Math.floor(f);
+      res.prev.show = i < 6 && pat[i] > 0; res.prev.a = pat[Math.min(i, 5)]; res.cur.show = false;
+      res.done = f >= 6; break;
+    }
+    case 'stack': res.done = f >= 4; break;
   }
+  return res;
 }
-function drawFlares(t) {
-  const f = val('flare'); if (f <= 0) return;
-  [[575, -2, 0], [1765, VH + 2, 2.1]].forEach(([x, y, ph]) => {
-    const tw = .85 + .15 * Math.sin(t * 1.3 + ph) + .05 * Math.sin(t * 7.1 + ph * 3);
-    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = f * tw;
-    let g = ctx.createRadialGradient(x, y, 0, x, y, 90); g.addColorStop(0, 'rgba(220,235,255,.9)'); g.addColorStop(.12, 'rgba(200,215,240,.45)'); g.addColorStop(.4, 'rgba(255,200,160,.08)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g; ctx.fillRect(x - 90, y - 90, 180, 180);
-    g = ctx.createRadialGradient(x, y, 0, x, y, 12); g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fill();
-    ctx.globalAlpha = f * tw * .35; ctx.fillStyle = 'rgba(210,225,255,1)';
-    ctx.beginPath(); ctx.ellipse(x, y, 150, 1.6, 0, 0, 7); ctx.fill();
-    ctx.restore();
-  });
+function scheduleHold() {
+  if (state.mode === 'script') { const e = SCRIPT[state.scriptIdx]; state.holdUntil = e ? state.scriptStart + e.t : Infinity; return; }
+  const rapid = state.rapid ? 22 / (FPS * spd()) : 0;
+  state.holdUntil = state.t + rapid + (state.lastFx === 'off' ? 1.6 : val('hold') * rand(.7, 1.3));
 }
-function drawPost(t) {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const dots = val('dots');
-  if (dots > 0 && dotLayer) { ctx.globalAlpha = dots * .55; ctx.drawImage(dotLayer, 0, 0); ctx.globalAlpha = 1; }
-  if (vignette) ctx.drawImage(vignette, 0, 0);
-  const gr = val('grain');
-  if (gr > 0) {
-    ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = gr * .22;
-    const tile = grainTiles[Math.floor(t * FPS) % grainTiles.length];
-    ctx.fillStyle = ctx.createPattern(tile, 'repeat');
-    const ox = Math.random() * 256, oy = Math.random() * 256;
-    ctx.translate(-ox, -oy); ctx.fillRect(0, 0, cv.width + 256, cv.height + 256);
-    ctx.restore();
+function finishTransition() {
+  const fx = state.trans.fx;
+  if (state.prev) { disposeShot(state.prev); state.prev = null; }
+  state.trans = null;
+  if (fx === 'off' && state.mode === 'random') state.forced = 'power';
+  scheduleHold();
+}
+function restart() {
+  state.token++;
+  disposeShot(state.prev); disposeShot(state.cur); state.prev = state.cur = null; state.trans = null;
+  if (state.rapid) { state.rapid.clips.forEach(c => c && c.dispose()); state.rapid = null; }
+  disposePlan(state.pending); state.pending = null;
+  state.scriptIdx = 0; state.scriptStart = state.t;
+  if (state.mode === 'script') { state.fadeStart = state.t + 2.25; state.holdUntil = state.t + SCRIPT[0].t; }
+  else { state.fadeStart = state.t; state.holdUntil = state.t + 1.2; state.forced = 'power'; }
+  hud('Empty stage', state.mode === 'script' ? 'Timeline starts' : '');
+}
+function stepRapid(t) {
+  const R = state.rapid; if (!R || t < R.t0 || !state.cur) return;
+  const steps = [3, 4, 9, 12, 16, 22], f = (t - R.t0) * FPS * spd() + 1e-4;
+  let i = 0; while (i < steps.length && f >= steps[i]) i++;
+  if (i > R.i) {
+    const card = state.cur.cards[state.cur.cards.length - 1], next = R.clips[i - 1];
+    if (next) { const old = card.clip; card.clip = next; next.dirty = true; R.clips[i - 1] = null; old.dispose(); }
+    R.i = i;
   }
+  if (f >= 22) { R.clips.forEach(c => c && c.dispose()); state.rapid = null; }
 }
 
-/* ------------------------------------------------------------------ */
-/* Transitions                                                         */
-/* ------------------------------------------------------------------ */
-const ID = { dx: 0, dy: 0, s: 1 };
-function extent(shot, dir) {
-  let a = Infinity, b = -Infinity;
-  shot.cards.forEach(c => { const lo = dir === 'h' ? c.cx - c.w / 2 : c.cy - c.h / 2, hi = dir === 'h' ? c.cx + c.w / 2 : c.cy + c.h / 2; a = Math.min(a, lo); b = Math.max(b, hi); });
-  shot.ghosts.forEach(g => { const f = shot.cards[0]; const c = dir === 'h' ? f.cx + g.dx : f.cy + g.dy, e = dir === 'h' ? g.w : g.h; a = Math.min(a, c - e / 2); b = Math.max(b, c + e / 2); });
-  return [a, b];
+/* ================================================================== */
+/* Frame loop                                                          */
+/* ================================================================== */
+const dust = Array.from({ length: 9 }, () => ({ x: rand(0, VW), y: rand(0, VH), vx: rand(-6, 6), vy: rand(-3, 3), s: rand(1.4, 3), a: rand(.35, .85) }));
+let lastMs = performance.now(), frameNo = 0, warp = 1, frozen = false;
+const hudState = { fx: 'Empty stage', info: '' };
+function hud(fx, info) { hudState.fx = fx; if (info !== undefined) hudState.info = info; updateHud(); }
+function updateHud() { $('hudFx').textContent = hudState.fx; $('hudInfo').textContent = (state.mode === 'script' ? tc(state.t - state.scriptStart) + (hudState.info ? ' · ' : '') : '') + hudState.info; }
+const tc = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r < 10 ? '0' : ''}${r.toFixed(1)}`; };
+function forEachCard(fn) { for (const s of [state.prev, state.cur]) if (s) s.cards.forEach(fn); }
+
+function tick(dt) {
+  if (state.pauseAt !== null) dt = Math.min(dt, Math.max(0, state.scriptStart + state.pauseAt - state.t));
+  if (state.playing) state.t += dt;
+  const t = state.t;
+  if (state.playing) {
+    if (state.trans) { if (evalTrans(t).done) finishTransition(); }
+    else if (t >= state.holdUntil - .021 && state.pending && !state.rapid) {   /* fire on the frame that contains the cue */
+      const plan = state.pending; state.pending = null;
+      if (state.mode === 'script') state.scriptIdx++;
+      execute(plan);
+    }
+    if (!state.pending) prepare();
+    stepRapid(t);
+    if (state.pauseAt !== null && t - state.scriptStart >= state.pauseAt) { state.pauseAt = null; setPlaying(false); }
+    for (const d of dust) { d.x = (d.x + d.vx * dt + VW) % VW; d.y = (d.y + d.vy * dt + VH) % VH; }
+  }
+  forEachCard(c => c.clip.update(state.playing ? dt : 0));
+  if (++frameNo % 6 === 0) updateHud();
 }
-function coverScale(shot) { const [x0, x1] = extent(shot, 'h'), [y0, y1] = extent(shot, 'v'); return Math.max(VW / (x1 - x0), VH / (y1 - y0)) * 1.06; }
+function frame(ms) {
+  const dt = Math.min(.1, Math.max(0, (ms - lastMs) / 1000)) * warp; lastMs = ms;
+  if (!frozen) { tick(dt); render(state.t); }
+  requestAnimationFrame(frame);
+}
 
-/* each returns { dur, frame(p, tSec) -> { old: tr, cur: tr } } ; p in 0..1 */
-const TRANSITIONS = {
-  stack: () => ({ dur: 6 / FPS, frame: p => ({ old: { hide: true }, cur: { dx: 30 * (1 - easeOutCubic(p)), dy: 0, s: 1 } }) }),
-  settle: () => ({ dur: 7 / FPS, frame: p => ({ old: { hide: true }, cur: { dx: 0, dy: 0, s: 1 + .12 * (1 - easeOutCubic(p)) } }) }),
-  slam: (prev, cur) => { const c = coverScale(cur); return { dur: 11 / FPS, frame: p => ({ old: { hide: true }, cur: { dx: 0, dy: 0, s: 1 + (c - 1) * (1 - easeOutQuart(p)) } }) }; },
-  power: () => ({
-    dur: 14 / FPS,
-    frame: (p, t, f) => {
-      /* frame-accurate copy of 0:03.9: blank, 145%, 135%, tag-only, 112% then ease */
-      if (f < 2) return { old: { hide: true }, cur: { hide: true } };
-      if (f === 2) return { old: { hide: true }, cur: { dx: 0, dy: -40, s: 1.45 } };
-      if (f === 3) return { old: { hide: true }, cur: { dx: -60, dy: -10, s: 1.35 } };
-      if (f === 4) return { old: { hide: true }, cur: { dx: 0, dy: 0, s: 1, hideCards: true } };
-      const q = clamp((f - 5) / 9, 0, 1);
-      return { old: { hide: true }, cur: { dx: 0, dy: 0, s: 1 + .12 * (1 - easeOutCubic(q)) } };
-    },
-  }),
-  push: (prev, cur) => {
-    const dir = pick(['left', 'right', 'up', 'down']);
-    const axis = dir === 'left' || dir === 'right' ? 'h' : 'v';
-    const [a0, a1] = extent(prev, axis), [b0, b1] = extent(cur, axis);
-    const gap = axis === 'h' ? 70 : 60;
-    const sign = dir === 'right' || dir === 'down' ? 1 : -1;
-    /* distance so the new group ends where it belongs and the old one leaves with a gap between them */
-    const dist = sign > 0 ? (a1 - b0) + gap : (b1 - a0) + gap;
-    return {
-      dur: 10 / FPS, dir,
-      frame: p => {
-        const e = easeInOutCubic(p), m = sign * dist * e, n = -sign * dist * (1 - e);
-        return axis === 'h' ? { old: { dx: m, dy: 0, s: 1 }, cur: { dx: n, dy: 0, s: 1 } } : { old: { dx: 0, dy: m, s: 1 }, cur: { dx: 0, dy: n, s: 1 } };
-      },
-    };
-  },
-  rapid: () => ({ dur: 0, frame: () => ({ old: { hide: true }, cur: ID }) }),
-  black: () => ({ dur: 1.2, frame: (p, t, f) => ({ old: { hide: true }, cur: { hide: true } }) }),
-};
+function render(t) {
+  const W = canvas.width, H = canvas.height;
+  ensureFbo(W, H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, W, H);
+  gl.disable(gl.BLEND);
+  const B = PROG.bg; gl.useProgram(B.p); rect(B, 0, 0, VW, VH);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, smokeTex); gl.uniform1i(B.u.uSmokeT, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, flareTex); gl.uniform1i(B.u.uFlareT, 1);
+  gl.uniform1f(B.u.uSmoke, val('smoke')); gl.uniform1f(B.u.uFlare, val('flare'));
+  draw();
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  const D = PROG.dot; gl.useProgram(D.p);
+  for (const d of dust) { rect(D, d.x - d.s, d.y - d.s, d.s * 2, d.s * 2); gl.uniform4f(D.u.uColor, .92, .92, .9, d.a * val('flare')); draw(); }
+  const ev = state.trans ? evalTrans(t) : null;
+  drawShot(state.prev, ev ? ev.prev : HIDDEN, t);
+  drawShot(state.cur, ev ? ev.cur : SHOWN, t);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.disable(gl.BLEND);
+  const P = PROG.post; gl.useProgram(P.p); rect(P, 0, 0, VW, VH);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, fboTex); gl.uniform1i(P.u.uTex, 0);
+  gl.uniform1f(P.u.uCA, val('fringe')); gl.uniform1f(P.u.uGrain, val('grain')); gl.uniform1f(P.u.uT, t);
+  gl.uniform1f(P.u.uFade, clamp((t - state.fadeStart) / .5, 0, 1));
+  gl.uniform1f(P.u.uPeriod, Math.max(2, Math.round(3 * S)));
+  gl.uniform1f(P.u.uGrid, val('bggrid') * .8 * clamp((3 * S - 1.4) / 1.2, 0, 1));
+  draw();
+}
 
-/* ------------------------------------------------------------------ */
-/* Playback                                                            */
-/* ------------------------------------------------------------------ */
-const ctrlIds = ['hold', 'speed', 'dots', 'grain', 'smoke', 'flare'];
-const fmt = { hold: v => v.toFixed(1) + ' s', speed: v => v.toFixed(2) + '×' };
-ctrlIds.forEach(k => { const el = $(k), out = $(k + 'Out'); const show = () => out.textContent = fmt[k] ? fmt[k](+el.value) : Math.round(+el.value * 100) + '%'; el.addEventListener('input', show); show(); });
-const val = k => parseFloat($(k).value);
-
-function chipRow(el, list, set, keyBase) {
+/* ================================================================== */
+/* Controls                                                            */
+/* ================================================================== */
+const fmt = { hold: v => v.toFixed(1) + ' s', speed: v => v.toFixed(2) + '×', fringe: v => v.toFixed(2) + '×' };
+['hold', 'speed', 'led', 'bggrid', 'fringe', 'grain', 'smoke', 'flare'].forEach(k => {
+  const el = $(k), out = $(k + 'Out');
+  const show = () => { out.textContent = fmt[k] ? fmt[k](+el.value) : Math.round(+el.value * 100) + '%'; };
+  el.addEventListener('input', show); show();
+});
+function chipRow(el, list, set, keys) {
   list.forEach((f, i) => {
     const b = document.createElement('button');
     b.className = 'chip'; b.type = 'button'; b.id = 'chip-' + f.id;
-    b.innerHTML = keyBase ? `<kbd>${i + 1}</kbd>${f.name}` : f.name;
+    b.innerHTML = keys ? `<kbd>${i + 1}</kbd>${f.name}` : f.name;
     b.setAttribute('aria-pressed', 'true');
     b.addEventListener('click', () => { if (set.has(f.id) && set.size > 1) set.delete(f.id); else set.add(f.id); b.setAttribute('aria-pressed', set.has(f.id)); });
     el.appendChild(b);
@@ -719,108 +1403,40 @@ function chipRow(el, list, set, keyBase) {
 chipRow($('fxChips'), FX, enabledFx, true);
 chipRow($('layoutChips'), LAYOUTS, enabledLayouts, false);
 
-const state = { prev: null, cur: null, next: null, tr: null, trStart: 0, trName: 'Power-on', holdStart: 0, playing: true, busy: false, forced: null, rapid: null, lastFx: null };
-const clock = { t: 0, last: performance.now() };
-const now = () => clock.t;
-
-function pickLayout(forFx) {
-  let pool = LAYOUTS.filter(l => enabledLayouts.has(l.id));
-  if (forFx === 'stack' || forFx === 'rapid') { const single = pool.filter(l => l.id !== 'pair'); if (single.length) pool = single; }
-  return weighted(pool).id;
+function setPlaying(p) {
+  state.playing = p; $('playBtn').textContent = p ? 'Pause' : 'Play';
+  forEachCard(c => c.clip.setPaused(!p));
 }
-function pickFx() {
-  if (state.forced) { const f = state.forced; state.forced = null; return f; }
-  let pool = FX.filter(f => enabledFx.has(f.id));
-  if (pool.length > 1) pool = pool.filter(f => f.id !== state.lastFx || f.id === 'push');
-  return weighted(pool).id;
+function discardPending() { state.token++; disposePlan(state.pending); state.pending = null; }
+function next() {
+  if (state.trans) return;
+  if (state.mode === 'script') { const e = SCRIPT[state.scriptIdx]; if (e) state.scriptStart -= state.scriptStart + e.t - state.t; }
+  state.holdUntil = state.t;
 }
-
-async function advance() {
-  if (state.busy) return; state.busy = true;
-  try {
-    const fx = pickFx(); state.lastFx = fx;
-    const layout = pickLayout(fx);
-    const prev = state.cur;
-    const shot = await buildShot(layout, prev, fx === 'stack');
-    if (fx === 'rapid') {
-      /* a burst of hard cuts inside the same card, every 3-5 frames */
-      const frames = []; for (let i = 0; i < 5; i++) frames.push((await makeImage(shot.layout === 'pair' || shot.layout === 'art')).img);
-      state.rapid = { imgs: frames, start: now(), steps: frames.map(() => (3 + Math.random() * 3 | 0) / FPS) };
-    }
-    const maker = TRANSITIONS[fx];
-    const tr = maker(prev || shot, shot);
-    state.prev = prev; state.cur = shot; state.tr = tr; state.trStart = now();
-    shot.born = now() + (fx === 'black' ? tr.dur : 0);
-    const name = FX.find(f => f.id === fx).name + (tr.dir ? ' ' + { left: '←', right: '→', up: '↑', down: '↓' }[tr.dir] : '');
-    state.trName = name;
-    $('hudFx').textContent = name;
-    $('hudInfo').textContent = shot.cards.map(c => c.name).join(' + ') + (shot.ghosts.length ? ` · ${shot.ghosts.length} ghost${shot.ghosts.length > 1 ? 's' : ''}` : '');
-    document.querySelectorAll('#fxChips .chip').forEach(c => c.classList.toggle('now', c.id === 'chip-' + fx));
-    if (fx === 'black') state.afterBlack = true;
-  } finally { state.busy = false; }
-}
-
-function frame(ms) {
-  const dt = Math.min(.1, (ms - clock.last) / 1000); clock.last = ms;
-  const speed = val('speed');
-  clock.t += dt;
-  const t = now();
-
-  ctx.setTransform(S, 0, 0, S, 0, 0);
-  drawBackground(t);
-  drawFlares(t);
-
-  let oldTr = { hide: true }, curTr = ID;
-  if (state.tr) {
-    const dur = state.tr.dur / speed;
-    const el = t - state.trStart;
-    const p = dur > 0 ? clamp(el / dur, 0, 1) : 1;
-    const f = Math.floor(el * speed * FPS);
-    const r = state.tr.frame(p, el, f);
-    oldTr = r.old; curTr = r.cur;
-    if (p >= 1) {
-      state.tr = null; state.prev = null; state.holdStart = t;
-      if (state.afterBlack) { state.afterBlack = false; state.forced = 'power'; state.holdStart = -1e9; }
-    }
-  } else if (state.playing && !state.busy && state.cur && t - state.holdStart > val('hold') + (state.rapid ? state.rapid.steps.reduce((a, b) => a + b, 0) : 0)) {
-    state.rapid = null; advance();
-  }
-  if (state.rapid && state.cur) {
-    let el = (t - state.rapid.start) * speed, i = 0;
-    while (i < state.rapid.steps.length - 1 && el > state.rapid.steps[i]) { el -= state.rapid.steps[i]; i++; }
-    state.cur.cards[0].img = state.rapid.imgs[i];
-  }
-  if (state.prev) drawShot(state.prev, t, { dx: 0, dy: 0, s: 1, ...oldTr });
-  drawShot(state.cur, t, { dx: 0, dy: 0, s: 1, ...curTr });
-
-  drawPost(t);
-  requestAnimationFrame(frame);
-}
-
-/* ------------------------------------------------------------------ */
-/* Controls                                                            */
-/* ------------------------------------------------------------------ */
-function next(fx) { if (state.tr || state.busy) return; if (fx) state.forced = fx; state.rapid = null; advance(); }
-$('nextBtn').addEventListener('click', () => next());
-const playBtn = $('playBtn');
-function togglePlay() { state.playing = !state.playing; playBtn.textContent = state.playing ? 'Pause' : 'Play'; if (state.playing) state.holdStart = now(); }
-playBtn.addEventListener('click', togglePlay);
-$('restartBtn').addEventListener('click', () => { if (state.tr || state.busy) return; state.cur = null; state.prev = null; state.rapid = null; next('power'); });
+$('nextBtn').addEventListener('click', next);
+$('playBtn').addEventListener('click', () => setPlaying(!state.playing));
+$('restartBtn').addEventListener('click', restart);
 $('fsBtn').addEventListener('click', () => { const s = $('stage'); try { const r = document.fullscreenElement ? document.exitFullscreen() : s.requestFullscreen?.(); r?.catch?.(() => {}); } catch (e) {} });
 $('hudOn').addEventListener('change', e => $('stage').classList.toggle('clean', !e.target.checked));
-sourceSel.addEventListener('change', () => { picsumFailed = false; statusEl.textContent = sourceSel.value === 'mine' && !userImages.length ? 'Add images first. Until then the generated plates keep playing.' : ''; });
+function syncModeUi() { document.querySelectorAll('.randomOnly').forEach(el => { el.hidden = state.mode !== 'random'; }); }
+$('mode').addEventListener('change', e => { state.mode = e.target.value; syncModeUi(); restart(); });
+$('source').addEventListener('change', () => {
+  picsumFailed = false; discardPending();
+  statusEl.textContent = $('source').value === 'mine' && !media.length ? 'Add videos or images first. Until then the built-in clips keep playing.' : 'The next shots use the new source.';
+});
+['grade', 'tags'].forEach(id => $(id).addEventListener('change', discardPending));
 
 async function addFiles(files) {
-  const list = [...files].filter(f => f.type.startsWith('image/'));
-  if (!list.length) { statusEl.textContent = 'Those files are not images. Use JPG, PNG, WebP or GIF.'; return; }
+  const list = [...files].filter(f => f.type.startsWith('video/') || f.type.startsWith('image/'));
+  if (!list.length) { statusEl.textContent = 'Those files are not videos or images. Use MP4, WebM, MOV, JPG, PNG or WebP.'; return; }
   for (const f of list) {
     const url = URL.createObjectURL(f);
-    try { const im = await loadImage(url, false); const [c, g] = mkCanvas(im.naturalWidth, im.naturalHeight); g.drawImage(im, 0, 0); userImages.push({ src: c, name: f.name }); }
-    catch (e) { statusEl.textContent = `Could not read ${f.name}.`; }
-    finally { URL.revokeObjectURL(url); }
+    if (f.type.startsWith('video/')) media.push({ kind: 'video', url, name: f.name });
+    else { try { media.push({ kind: 'image', img: await loadImage(url, false), url, name: f.name }); } catch (e) { statusEl.textContent = `Could not read ${f.name}.`; } }
   }
-  sourceSel.value = 'mine';
-  statusEl.textContent = `${userImages.length} image${userImages.length === 1 ? '' : 's'} loaded. They now play in random order.`;
+  $('source').value = 'mine'; discardPending();
+  const v = media.filter(m => m.kind === 'video').length, i = media.length - v;
+  statusEl.textContent = `${v} video${v === 1 ? '' : 's'} and ${i} image${i === 1 ? '' : 's'} loaded. Each new card plays a random segment.`;
 }
 $('files').addEventListener('change', e => addFiles(e.target.files));
 addEventListener('dragover', e => e.preventDefault());
@@ -828,19 +1444,25 @@ addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer?.files?.l
 addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input, select, textarea')) return;
   if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
-  else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
-  else if (/^[1-7]$/.test(e.key)) next(FX[+e.key - 1].id);
+  else if (e.key === ' ') { e.preventDefault(); setPlaying(!state.playing); }
+  else if (/^[1-7]$/.test(e.key) && state.mode === 'random' && !state.trans) { state.forced = FX[+e.key - 1].id; discardPending(); state.holdUntil = state.t; }
 });
 
-/* ------------------------------------------------------------------ */
-/* Boot: empty stage for ~1.7 s, then power-on, like the video         */
-/* ------------------------------------------------------------------ */
-(async () => {
-  resize();
-  try { await Promise.race([document.fonts.load('26px "Uncial Antiqua"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) {}
-  requestAnimationFrame(ms => { clock.last = ms; requestAnimationFrame(frame); });
-  setTimeout(() => next('power'), 1700);
-})();
+/* hooks for automated comparison against the source video */
+window.filmbookLab = {
+  time: () => state.t - state.scriptStart,
+  pauseAt: s => { state.pauseAt = s; },
+  play: () => setPlaying(true),
+  setWarp: k => { warp = k; },
+  /* deterministic stepping for frame-by-frame comparison: freezes the live loop */
+  step: (dt, n = 1) => { frozen = true; for (let i = 0; i < n; i++) tick(dt); render(state.t); return state.t - state.scriptStart; },
+  resume: () => { frozen = false; },
+};
+
+syncModeUi();
+resize();
+restart();
+requestAnimationFrame(ms => { lastMs = ms; requestAnimationFrame(frame); });
 })();
 </script>
 </body>
